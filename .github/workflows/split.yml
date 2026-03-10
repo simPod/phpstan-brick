@@ -28,7 +28,7 @@ jobs:
         run: echo "name=${REF_NAME#math/}" >> "$GITHUB_OUTPUT"
 
       - name: "Split package"
-        uses: "claudiodekker/splitsh-action@v1"
+        uses: "claudiodekker/splitsh-action@v1.0.0"
         env:
           GITHUB_TOKEN: ${{ secrets.SPLIT_TOKEN }}
         with:
@@ -55,7 +55,7 @@ jobs:
         run: echo "name=${REF_NAME#money/}" >> "$GITHUB_OUTPUT"
 
       - name: "Split package"
-        uses: "claudiodekker/splitsh-action@v1"
+        uses: "claudiodekker/splitsh-action@v1.0.0"
         env:
           GITHUB_TOKEN: ${{ secrets.SPLIT_TOKEN }}
         with:
