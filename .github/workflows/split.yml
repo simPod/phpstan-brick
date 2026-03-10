@@ -1,0 +1,64 @@
+name: "Split Monorepo"
+
+on:
+  push:
+    branches:
+      - "main"
+    tags:
+      - "math/**"
+      - "money/**"
+
+jobs:
+  split_math:
+    name: "Split - math"
+    runs-on: "ubuntu-24.04"
+    if: "github.ref_type == 'branch' || startsWith(github.ref_name, 'math/')"
+
+    steps:
+      - name: "Checkout code"
+        uses: "actions/checkout@v6"
+        with:
+          fetch-depth: 0
+
+      - name: "Resolve tag"
+        id: "tag"
+        if: "github.ref_type == 'tag'"
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: echo "name=${REF_NAME#math/}" >> "$GITHUB_OUTPUT"
+
+      - name: "Split package"
+        uses: "claudiodekker/splitsh-action@v1"
+        env:
+          GITHUB_TOKEN: ${{ secrets.SPLIT_TOKEN }}
+        with:
+          source: "math"
+          target: "https://github.com/simPod/phpstan-brick-math.git"
+          tag: "${{ steps.tag.outputs.name }}"
+
+  split_money:
+    name: "Split - money"
+    runs-on: "ubuntu-24.04"
+    if: "github.ref_type == 'branch' || startsWith(github.ref_name, 'money/')"
+
+    steps:
+      - name: "Checkout code"
+        uses: "actions/checkout@v6"
+        with:
+          fetch-depth: 0
+
+      - name: "Resolve tag"
+        id: "tag"
+        if: "github.ref_type == 'tag'"
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: echo "name=${REF_NAME#money/}" >> "$GITHUB_OUTPUT"
+
+      - name: "Split package"
+        uses: "claudiodekker/splitsh-action@v1"
+        env:
+          GITHUB_TOKEN: ${{ secrets.SPLIT_TOKEN }}
+        with:
+          source: "money"
+          target: "https://github.com/simPod/phpstan-brick-money.git"
+          tag: "${{ steps.tag.outputs.name }}"
