@@ -203,6 +203,10 @@ final class BigNumberOfThrowTypeExtension implements DynamicStaticMethodThrowTyp
      */
     private static function isNonZero(Type $type): bool
     {
+        if (! (new IntegerType())->isSuperTypeOf($type)->yes()) {
+            return false;
+        }
+
         return (new ConstantIntegerType(0))->isSuperTypeOf($type)->no();
     }
 

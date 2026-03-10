@@ -111,6 +111,6 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
             return null;
         }
 
-        return $methodReflection->getThrowType();
+        return new ObjectType(UnknownCurrencyException::class);
     }
 }

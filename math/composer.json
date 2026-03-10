@@ -9,7 +9,8 @@
         "phpstan/phpstan": "^2.1"
     },
     "require-dev": {
-        "cdn77/coding-standard": "^7.4"
+        "cdn77/coding-standard": "^7.4",
+        "phpunit/phpunit": "^11.5"
     },
     "extra": {
         "phpstan": {
@@ -26,6 +27,11 @@
     "autoload": {
         "psr-4": {
             "Brick\\Math\\PHPStan\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Brick\\Math\\PHPStan\\Tests\\": "tests/"
         }
     }
 }

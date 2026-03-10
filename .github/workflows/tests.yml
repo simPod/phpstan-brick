@@ -1,0 +1,44 @@
+name: "Tests"
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "main"
+
+jobs:
+  phpunit:
+    name: "PHPUnit - ${{ matrix.package }} / PHP ${{ matrix.php-version }}"
+    runs-on: "ubuntu-24.04"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - "math"
+          - "money"
+        php-version:
+          - "8.4"
+          - "8.5"
+
+    defaults:
+      run:
+        working-directory: "${{ matrix.package }}"
+
+    steps:
+      - name: "Checkout code"
+        uses: "actions/checkout@v6"
+
+      - name: "Install PHP"
+        uses: "shivammathur/setup-php@v2"
+        with:
+          coverage: "none"
+          php-version: "${{ matrix.php-version }}"
+
+      - name: "Install dependencies with Composer"
+        uses: "ramsey/composer-install@v3"
+        with:
+          working-directory: "${{ matrix.package }}"
+
+      - name: "Run tests with PHPUnit"
+        run: "vendor/bin/phpunit"
