@@ -37,7 +37,9 @@ jobs:
 
       - name: "Install splitsh-lite"
         run: |
-          curl -sL https://github.com/splitsh/lite/releases/download/v1.0.1/lite_linux_amd64.tar.gz | tar xz -C /usr/local/bin
+          mkdir -p /tmp/splitsh
+          curl -sL https://github.com/splitsh/lite/releases/download/v1.0.1/lite_linux_amd64.tar.gz | tar xz -C /tmp/splitsh
+          sudo mv /tmp/splitsh/splitsh-lite /usr/local/bin/splitsh-lite
 
       - name: "Split and push"
         env:
@@ -87,7 +89,9 @@ jobs:
 
       - name: "Install splitsh-lite"
         run: |
-          curl -sL https://github.com/splitsh/lite/releases/download/v1.0.1/lite_linux_amd64.tar.gz | tar xz -C /usr/local/bin
+          mkdir -p /tmp/splitsh
+          curl -sL https://github.com/splitsh/lite/releases/download/v1.0.1/lite_linux_amd64.tar.gz | tar xz -C /tmp/splitsh
+          sudo mv /tmp/splitsh/splitsh-lite /usr/local/bin/splitsh-lite
 
       - name: "Split and push"
         env:
