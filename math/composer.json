@@ -1,0 +1,31 @@
+{
+    "name": "simpod/phpstan-brick-math",
+    "description": "PHPStan dynamic throw type extensions for brick/math",
+    "license": "MIT",
+    "type": "phpstan-extension",
+    "require": {
+        "php": "^8.4",
+        "brick/math": "^0.15",
+        "phpstan/phpstan": "^2.1"
+    },
+    "require-dev": {
+        "cdn77/coding-standard": "^7.4"
+    },
+    "extra": {
+        "phpstan": {
+            "includes": [
+                "extension.neon"
+            ]
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Brick\\Math\\PHPStan\\": "src/"
+        }
+    }
+}

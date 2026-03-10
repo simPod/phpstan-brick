@@ -1,0 +1,31 @@
+{
+    "name": "simpod/phpstan-brick-money",
+    "description": "PHPStan dynamic throw type extensions for brick/money",
+    "license": "MIT",
+    "type": "phpstan-extension",
+    "require": {
+        "php": "^8.4",
+        "brick/money": "^0.12",
+        "phpstan/phpstan": "^2.1"
+    },
+    "require-dev": {
+        "cdn77/coding-standard": "^7.4"
+    },
+    "extra": {
+        "phpstan": {
+            "includes": [
+                "extension.neon"
+            ]
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Brick\\Money\\PHPStan\\": "src/"
+        }
+    }
+}

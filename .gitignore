@@ -1,0 +1,9 @@
+# math
+/math/vendor/
+/math/composer.lock
+/math/.phpcs-cache
+
+# money
+/money/vendor/
+/money/composer.lock
+/money/.phpcs-cache
