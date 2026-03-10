@@ -1,9 +1,0 @@
-/.github/            export-ignore
-/.gitattributes      export-ignore
-/.gitignore          export-ignore
-
-/math/phpcs.xml.dist export-ignore
-/math/phpstan.neon   export-ignore
-
-/money/phpcs.xml.dist export-ignore
-/money/phpstan.neon   export-ignore
