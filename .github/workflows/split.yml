@@ -16,9 +16,10 @@ jobs:
 
     steps:
       - name: "Checkout code"
-        uses: "actions/checkout@v4"
+        uses: "actions/checkout@v6"
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: "Resolve reference"
         id: "ref"
@@ -34,15 +35,29 @@ jobs:
             echo "is_tag=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: "Split package"
-        uses: "claudiodekker/splitsh-action@v1.0.0"
+      - name: "Install splitsh-lite"
+        run: |
+          curl -sL https://github.com/splitsh/lite/releases/download/v1.0.1/lite_linux_amd64.tar.gz | tar xz -C /usr/local/bin
+
+      - name: "Split and push"
         env:
           GITHUB_TOKEN: ${{ secrets.SPLIT_TOKEN }}
-        with:
-          prefix: "math"
-          remote: "https://github.com/simPod/phpstan-brick-math.git"
-          reference: "${{ steps.ref.outputs.name }}"
-          as_tag: "${{ steps.ref.outputs.is_tag }}"
+          REMOTE: "https://github.com/simPod/phpstan-brick-math.git"
+          REFERENCE: ${{ steps.ref.outputs.name }}
+          IS_TAG: ${{ steps.ref.outputs.is_tag }}
+        run: |
+          git config --local --unset-all http.https://github.com/.extraheader || true
+
+          SHA=$(splitsh-lite --prefix=math)
+
+          REMOTE_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/simPod/phpstan-brick-math.git"
+
+          if [ "$IS_TAG" = "true" ]; then
+            git tag -f "v${REFERENCE}" "$SHA"
+            git push "$REMOTE_URL" "v${REFERENCE}"
+          else
+            git push "$REMOTE_URL" "$SHA:refs/heads/$REFERENCE"
+          fi
 
   split_money:
     name: "Split - money"
@@ -51,9 +66,10 @@ jobs:
 
     steps:
       - name: "Checkout code"
-        uses: "actions/checkout@v4"
+        uses: "actions/checkout@v6"
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: "Resolve reference"
         id: "ref"
@@ -69,12 +85,26 @@ jobs:
             echo "is_tag=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: "Split package"
-        uses: "claudiodekker/splitsh-action@v1.0.0"
+      - name: "Install splitsh-lite"
+        run: |
+          curl -sL https://github.com/splitsh/lite/releases/download/v1.0.1/lite_linux_amd64.tar.gz | tar xz -C /usr/local/bin
+
+      - name: "Split and push"
         env:
           GITHUB_TOKEN: ${{ secrets.SPLIT_TOKEN }}
-        with:
-          prefix: "money"
-          remote: "https://github.com/simPod/phpstan-brick-money.git"
-          reference: "${{ steps.ref.outputs.name }}"
-          as_tag: "${{ steps.ref.outputs.is_tag }}"
+          REMOTE: "https://github.com/simPod/phpstan-brick-money.git"
+          REFERENCE: ${{ steps.ref.outputs.name }}
+          IS_TAG: ${{ steps.ref.outputs.is_tag }}
+        run: |
+          git config --local --unset-all http.https://github.com/.extraheader || true
+
+          SHA=$(splitsh-lite --prefix=money)
+
+          REMOTE_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/simPod/phpstan-brick-money.git"
+
+          if [ "$IS_TAG" = "true" ]; then
+            git tag -f "v${REFERENCE}" "$SHA"
+            git push "$REMOTE_URL" "v${REFERENCE}"
+          else
+            git push "$REMOTE_URL" "$SHA:refs/heads/$REFERENCE"
+          fi
