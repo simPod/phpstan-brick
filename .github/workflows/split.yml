@@ -20,21 +20,29 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: "Resolve tag"
-        id: "tag"
-        if: "github.ref_type == 'tag'"
+      - name: "Resolve reference"
+        id: "ref"
         env:
           REF_NAME: ${{ github.ref_name }}
-        run: echo "name=${REF_NAME#math/}" >> "$GITHUB_OUTPUT"
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" = "tag" ]; then
+            echo "name=${REF_NAME#math/}" >> "$GITHUB_OUTPUT"
+            echo "is_tag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=$REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "is_tag=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: "Split package"
         uses: "claudiodekker/splitsh-action@v1.0.0"
         env:
           GITHUB_TOKEN: ${{ secrets.SPLIT_TOKEN }}
         with:
-          source: "math"
-          target: "https://github.com/simPod/phpstan-brick-math.git"
-          tag: "${{ steps.tag.outputs.name }}"
+          prefix: "math"
+          remote: "https://github.com/simPod/phpstan-brick-math.git"
+          reference: "${{ steps.ref.outputs.name }}"
+          as_tag: "${{ steps.ref.outputs.is_tag }}"
 
   split_money:
     name: "Split - money"
@@ -47,18 +55,26 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: "Resolve tag"
-        id: "tag"
-        if: "github.ref_type == 'tag'"
+      - name: "Resolve reference"
+        id: "ref"
         env:
           REF_NAME: ${{ github.ref_name }}
-        run: echo "name=${REF_NAME#money/}" >> "$GITHUB_OUTPUT"
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" = "tag" ]; then
+            echo "name=${REF_NAME#money/}" >> "$GITHUB_OUTPUT"
+            echo "is_tag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=$REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "is_tag=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: "Split package"
         uses: "claudiodekker/splitsh-action@v1.0.0"
         env:
           GITHUB_TOKEN: ${{ secrets.SPLIT_TOKEN }}
         with:
-          source: "money"
-          target: "https://github.com/simPod/phpstan-brick-money.git"
-          tag: "${{ steps.tag.outputs.name }}"
+          prefix: "money"
+          remote: "https://github.com/simPod/phpstan-brick-money.git"
+          reference: "${{ steps.ref.outputs.name }}"
+          as_tag: "${{ steps.ref.outputs.is_tag }}"
