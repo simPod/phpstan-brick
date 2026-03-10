@@ -210,9 +210,11 @@ final class RoundingModeThrowTypeExtension implements DynamicMethodThrowTypeExte
      */
     private static function isNonZero(Type $type): bool
     {
-        $zeroType = new ConstantIntegerType(0);
+        if (! (new IntegerType())->isSuperTypeOf($type)->yes()) {
+            return false;
+        }
 
-        return $zeroType->isSuperTypeOf($type)->no();
+        return (new ConstantIntegerType(0))->isSuperTypeOf($type)->no();
     }
 
     private static function isNotUnnecessary(Type $roundingModeType): bool
