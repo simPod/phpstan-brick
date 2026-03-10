@@ -10,7 +10,7 @@
     },
     "require-dev": {
         "cdn77/coding-standard": "^7.4",
-        "phpunit/phpunit": "^11.5"
+        "phpunit/phpunit": "^13.0"
     },
     "extra": {
         "phpstan": {
