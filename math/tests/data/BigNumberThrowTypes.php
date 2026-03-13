@@ -121,6 +121,53 @@ class BigNumberThrowTypes
         }
     }
 
+    // --- toScale() + toBigInteger() chain ---
+
+    public function toBigIntegerAfterToScaleZero(BigDecimal $a): void
+    {
+        try {
+            $result = $a->toScale(0, RoundingMode::HalfUp)->toBigInteger();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function toBigIntegerAfterToScaleZeroDown(BigDecimal $a): void
+    {
+        try {
+            $result = $a->toScale(0, RoundingMode::Down)->toBigInteger();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function toBigIntegerAfterToScaleNonZero(BigDecimal $a): void
+    {
+        try {
+            $result = $a->toScale(2, RoundingMode::HalfUp)->toBigInteger();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function toBigIntegerAfterToScaleUnnecessary(BigDecimal $a): void
+    {
+        try {
+            $result = $a->toScale(0, RoundingMode::Unnecessary)->toBigInteger();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function toBigIntegerAfterToScaleNoRoundingMode(BigDecimal $a): void
+    {
+        try {
+            $result = $a->toScale(0)->toBigInteger();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
     // --- Rounding mode methods ---
 
     /** @param int<0, max> $scale */
