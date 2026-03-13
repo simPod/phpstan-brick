@@ -81,6 +81,16 @@ final class SafeType
     }
 
     /**
+     * Returns whether the given type is guaranteed to be zero.
+     *
+     * Zero scaled to any precision is still zero, so no rounding can occur.
+     */
+    public static function isZero(Type $type): bool
+    {
+        return (new ConstantIntegerType(0))->isSuperTypeOf($type)->yes();
+    }
+
+    /**
      * Returns whether the given type is guaranteed to be non-zero.
      *
      * This is used to eliminate {@see DivisionByZeroException} from throw types.
