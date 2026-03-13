@@ -109,6 +109,8 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
      * - Zero amount: zero at any scale is still zero.
      * - Money::of() with int amount and a context that only scales (no step division):
      *   scaling an integer to higher precision just adds trailing zeros.
+     * - Money::ofMinor() with int amount and default context:
+     *   minor int divided by 10^fractionDigits then scaled back to fractionDigits is always exact.
      *
      * @param Arg[] $args
      */
@@ -118,9 +120,19 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
             return true;
         }
 
+        if (! (new IntegerType())->isSuperTypeOf($amountType)->yes()) {
+            return false;
+        }
+
         // For Money::of() with int amount, check if the context is safe (no step division).
-        if ($methodName === 'of' && (new IntegerType())->isSuperTypeOf($amountType)->yes()) {
+        if ($methodName === 'of') {
             return $this->isContextSafeForInteger($args);
+        }
+
+        // For Money::ofMinor() with int amount, default context is always safe:
+        // int / 10^fractionDigits scaled to fractionDigits is exact.
+        if ($methodName === 'ofMinor') {
+            return ! isset($args[2]) || $this->isDefaultContext($args[2]);
         }
 
         return false;
@@ -170,6 +182,15 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
         }
 
         return false;
+    }
+
+    private function isDefaultContext(Arg $arg): bool
+    {
+        $expr = $arg->value;
+
+        return $expr instanceof New_
+            && $expr->class instanceof Name
+            && $expr->class->toString() === DefaultContext::class;
     }
 
     private function narrowZero(
