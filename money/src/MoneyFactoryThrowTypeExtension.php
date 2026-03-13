@@ -6,13 +6,21 @@ namespace Brick\Money\PHPStan;
 
 use Brick\Math\Exception\NumberFormatException;
 use Brick\Math\Exception\RoundingNecessaryException;
+use Brick\Money\Context\AutoContext;
+use Brick\Money\Context\CustomContext;
+use Brick\Money\Context\DefaultContext;
 use Brick\Money\Exception\UnknownCurrencyException;
 use Brick\Money\Money;
 use Brick\Money\RationalMoney;
+use PhpParser\Node\Arg;
+use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\Int_;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\MethodReflection;
 use PHPStan\Type\DynamicStaticMethodThrowTypeExtension;
+use PHPStan\Type\IntegerType;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
 use PHPStan\Type\TypeCombinator;
@@ -83,8 +91,8 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
         }
 
         // Money::of()/ofMinor() can still throw RoundingNecessaryException,
-        // unless the amount is zero (zero at any scale is still zero).
-        if ($className === Money::class && ! SafeType::isZero($amountType)) {
+        // unless the amount cannot require rounding.
+        if ($className === Money::class && ! $this->isRoundingSafe($amountType, $methodName, $args)) {
             $residualTypes[] = new ObjectType(RoundingNecessaryException::class);
         }
 
@@ -93,6 +101,75 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
         }
 
         return TypeCombinator::union(...$residualTypes);
+    }
+
+    /**
+     * Checks if rounding is guaranteed to not be needed.
+     *
+     * - Zero amount: zero at any scale is still zero.
+     * - Money::of() with int amount and a context that only scales (no step division):
+     *   scaling an integer to higher precision just adds trailing zeros.
+     *
+     * @param Arg[] $args
+     */
+    private function isRoundingSafe(Type $amountType, string $methodName, array $args): bool
+    {
+        if (SafeType::isZero($amountType)) {
+            return true;
+        }
+
+        // For Money::of() with int amount, check if the context is safe (no step division).
+        if ($methodName === 'of' && (new IntegerType())->isSuperTypeOf($amountType)->yes()) {
+            return $this->isContextSafeForInteger($args);
+        }
+
+        return false;
+    }
+
+    /**
+     * Checks if the context argument (arg index 2) is safe for integer amounts.
+     *
+     * Safe contexts are those that only perform toScale() without dividing by a step:
+     * - No context arg (default {@see DefaultContext})
+     * - {@see DefaultContext}
+     * - {@see AutoContext}
+     * - {@see CustomContext} with step = 1 (default or explicit)
+     *
+     * @param Arg[] $args
+     */
+    private function isContextSafeForInteger(array $args): bool
+    {
+        if (! isset($args[2])) {
+            return true;
+        }
+
+        $contextExpr = $args[2]->value;
+
+        if (! $contextExpr instanceof New_ || ! $contextExpr->class instanceof Name) {
+            return false;
+        }
+
+        $contextClass = $contextExpr->class->toString();
+
+        if ($contextClass === DefaultContext::class || $contextClass === AutoContext::class) {
+            return true;
+        }
+
+        if ($contextClass === CustomContext::class) {
+            $ctorArgs = $contextExpr->getArgs();
+
+            // new CustomContext($scale) — step defaults to 1.
+            if (count($ctorArgs) < 2) {
+                return true;
+            }
+
+            // new CustomContext($scale, 1) — explicit step = 1.
+            $stepType = $ctorArgs[1]->value;
+
+            return $stepType instanceof Int_ && $stepType->value === 1;
+        }
+
+        return false;
     }
 
     private function narrowZero(

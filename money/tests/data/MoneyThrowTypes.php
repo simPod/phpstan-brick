@@ -19,19 +19,28 @@ class MoneyThrowTypes
 {
     // --- Factory methods ---
 
-    public function ofWithSafeArgs(): void
+    public function ofIntWithKnownCurrency(): void
     {
         try {
             $result = Money::of(100, 'USD');
         } finally {
-            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
         }
     }
 
-    public function ofWithCurrencyInstance(Currency $currency): void
+    public function ofIntWithCurrencyInstance(Currency $currency): void
     {
         try {
             $result = Money::of(100, $currency);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofStringWithKnownCurrency(string $amount): void
+    {
+        try {
+            $result = Money::of($amount, 'USD');
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
@@ -82,10 +91,37 @@ class MoneyThrowTypes
         }
     }
 
-    public function ofNonZeroWithContext(): void
+    public function ofIntWithCustomContextStep1(): void
     {
         try {
-            $result = Money::of(100, 'EUR', new CustomContext(4, 1));
+            $result = Money::of(500, 'EUR', new CustomContext(4, 1));
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofIntWithCustomContextDefaultStep(): void
+    {
+        try {
+            $result = Money::of(500, 'EUR', new CustomContext(4));
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofIntWithCustomContextStepGreaterThan1(): void
+    {
+        try {
+            $result = Money::of(500, 'EUR', new CustomContext(2, 5));
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function ofStringWithCustomContext(string $amount): void
+    {
+        try {
+            $result = Money::of($amount, 'EUR', new CustomContext(4, 1));
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
