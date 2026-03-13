@@ -82,8 +82,9 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
             $residualTypes[] = new ObjectType(UnknownCurrencyException::class);
         }
 
-        // Money::of()/ofMinor() can still throw RoundingNecessaryException.
-        if ($className === Money::class) {
+        // Money::of()/ofMinor() can still throw RoundingNecessaryException,
+        // unless the amount is zero (zero at any scale is still zero).
+        if ($className === Money::class && ! SafeType::isZero($amountType)) {
             $residualTypes[] = new ObjectType(RoundingNecessaryException::class);
         }
 

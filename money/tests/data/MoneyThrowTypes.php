@@ -7,6 +7,7 @@ namespace Brick\Money\PHPStan\Tests\Data;
 use Brick\Math\BigDecimal;
 use Brick\Math\BigInteger;
 use Brick\Math\RoundingMode;
+use Brick\Money\Context\CustomContext;
 use Brick\Money\Currency;
 use Brick\Money\Money;
 use Brick\Money\RationalMoney;
@@ -60,6 +61,33 @@ class MoneyThrowTypes
             $result = RationalMoney::of(100, $currency);
         } finally {
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofZeroWithContext(): void
+    {
+        try {
+            $result = Money::of(0, 'EUR', new CustomContext(4, 1));
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofZeroWithCurrencyInstance(Currency $currency): void
+    {
+        try {
+            $result = Money::of(0, $currency);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofNonZeroWithContext(): void
+    {
+        try {
+            $result = Money::of(100, 'EUR', new CustomContext(4, 1));
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
     }
 
