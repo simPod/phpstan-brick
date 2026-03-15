@@ -182,6 +182,11 @@ final class MoneyOperationThrowTypeExtension implements DynamicMethodThrowTypeEx
             return $methodReflection->getThrowType();
         }
 
+        // For plus/minus/multipliedBy with int arg, rounding is impossible:
+        // int arithmetic on a Money value always produces an exact result
+        // that fits the same context (any scale, any step).
+        $intArgSuppressesRounding = $methodName !== 'dividedBy' && SafeType::isInteger($argType);
+
         // Money: build residual throw types.
         $residualTypes = [];
 
@@ -195,8 +200,8 @@ final class MoneyOperationThrowTypeExtension implements DynamicMethodThrowTypeEx
             $residualTypes[] = new ObjectType(NumberFormatException::class);
         }
 
-        // RoundingNecessaryException when rounding mode is not safe.
-        if (! $roundingModeIsSafe) {
+        // RoundingNecessaryException when rounding mode is not safe and int arg doesn't suppress it.
+        if (! $roundingModeIsSafe && ! $intArgSuppressesRounding) {
             $residualTypes[] = new ObjectType(RoundingNecessaryException::class);
         }
 

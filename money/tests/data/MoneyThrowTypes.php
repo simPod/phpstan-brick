@@ -212,6 +212,53 @@ class MoneyThrowTypes
         }
     }
 
+    // --- Int arithmetic (no rounding mode needed) ---
+
+    public function multipliedByInt(Money $a): void
+    {
+        try {
+            $result = $a->multipliedBy(5);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function plusWithInt(Money $a): void
+    {
+        try {
+            $result = $a->plus(10);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function minusWithInt(Money $a): void
+    {
+        try {
+            $result = $a->minus(10);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function dividedByIntNoRoundingMode(Money $a): void
+    {
+        try {
+            $result = $a->dividedBy(3);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function multipliedByString(Money $a, string $s): void
+    {
+        try {
+            $result = $a->multipliedBy($s);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
     // --- RationalMoney arithmetic ---
 
     public function rationalPlusWithInt(RationalMoney $a): void

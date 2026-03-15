@@ -81,6 +81,17 @@ final class SafeType
     }
 
     /**
+     * Returns whether the given type is an integer.
+     *
+     * Integer arithmetic (plus, minus, multipliedBy) on Money always produces
+     * an exact result that fits the same context, so rounding cannot occur.
+     */
+    public static function isInteger(Type $type): bool
+    {
+        return (new IntegerType())->isSuperTypeOf($type)->yes();
+    }
+
+    /**
      * Returns whether the given type is guaranteed to be zero.
      *
      * Zero scaled to any precision is still zero, so no rounding can occur.
