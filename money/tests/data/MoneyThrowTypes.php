@@ -64,6 +64,42 @@ class MoneyThrowTypes
         }
     }
 
+    public function ofMinorIntWithKnownCurrency(): void
+    {
+        try {
+            $result = Money::ofMinor(500, 'USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofMinorIntWithCurrencyInstance(Currency $currency): void
+    {
+        try {
+            $result = Money::ofMinor(500, $currency);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofMinorIntWithCustomContext(): void
+    {
+        try {
+            $result = Money::ofMinor(500, 'USD', new CustomContext(4, 1));
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function ofMinorStringWithKnownCurrency(string $amount): void
+    {
+        try {
+            $result = Money::ofMinor($amount, 'USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
     public function rationalMoneyOfWithSafeArgs(Currency $currency): void
     {
         try {
