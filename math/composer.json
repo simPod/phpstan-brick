@@ -5,7 +5,7 @@
     "type": "phpstan-extension",
     "require": {
         "php": "^8.4",
-        "brick/math": "^0.15 || ^0.16",
+        "brick/math": "^0.17",
         "phpstan/phpstan": "^2.1"
     },
     "require-dev": {
