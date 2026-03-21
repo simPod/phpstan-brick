@@ -207,4 +207,132 @@ class BigNumberThrowTypes
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
         }
     }
+
+    /** Static variadic methods (min, max, sum, gcdAll, lcmAll) */
+
+    public function minWithSameType(BigInteger $a, BigInteger $b): void
+    {
+        try {
+            $result = BigInteger::min($a, $b);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function minWithInt(): void
+    {
+        try {
+            $result = BigInteger::min(1, 2, 3);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function minWithString(string $a, string $b): void
+    {
+        try {
+            $result = BigInteger::min($a, $b);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function maxWithSameType(BigDecimal $a, BigDecimal $b): void
+    {
+        try {
+            $result = BigDecimal::max($a, $b);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function maxWithString(string $a): void
+    {
+        try {
+            $result = BigDecimal::max($a);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function sumWithSameType(BigRational $a, BigRational $b): void
+    {
+        try {
+            $result = BigRational::sum($a, $b);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function sumWithInt(): void
+    {
+        try {
+            $result = BigInteger::sum(1, 2, 3);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function sumWithString(string $a, string $b): void
+    {
+        try {
+            $result = BigInteger::sum($a, $b);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function gcdAllWithSameType(BigInteger $a, BigInteger $b, BigInteger $c): void
+    {
+        try {
+            $result = BigInteger::gcdAll($a, $b, $c);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function gcdAllWithInt(): void
+    {
+        try {
+            $result = BigInteger::gcdAll(12, 18, 24);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function gcdAllWithString(string $a, string $b): void
+    {
+        try {
+            $result = BigInteger::gcdAll($a, $b);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function lcmAllWithSameType(BigInteger $a, BigInteger $b): void
+    {
+        try {
+            $result = BigInteger::lcmAll($a, $b);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function lcmAllWithString(string $a): void
+    {
+        try {
+            $result = BigInteger::lcmAll($a);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function minOnBigNumberWithMixedBigNumber(BigInteger $a, BigDecimal $b): void
+    {
+        try {
+            $result = BigNumber::min($a, $b);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
 }
