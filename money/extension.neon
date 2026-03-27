@@ -5,11 +5,6 @@ services:
 			- phpstan.dynamicStaticMethodThrowTypeExtension
 
 	-
-		class: Brick\Money\PHPStan\MoneyFactoryRoundingModeThrowTypeExtension
-		tags:
-			- phpstan.dynamicStaticMethodThrowTypeExtension
-
-	-
 		class: Brick\Money\PHPStan\MoneyOperationThrowTypeExtension
 		tags:
 			- phpstan.dynamicMethodThrowTypeExtension

@@ -92,7 +92,7 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
 
         // Money::of()/ofMinor() can still throw RoundingNecessaryException,
         // unless the amount cannot require rounding.
-        if ($className === Money::class && ! $this->isRoundingSafe($amountType, $methodName, $args)) {
+        if ($className === Money::class && ! $this->isRoundingSafe($amountType, $methodName, $args, $scope)) {
             $residualTypes[] = new ObjectType(RoundingNecessaryException::class);
         }
 
@@ -114,8 +114,12 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
      *
      * @param Arg[] $args
      */
-    private function isRoundingSafe(Type $amountType, string $methodName, array $args): bool
+    private function isRoundingSafe(Type $amountType, string $methodName, array $args, Scope $scope): bool
     {
+        if (isset($args[3]) && SafeType::isSafeRoundingMode($scope->getType($args[3]->value))) {
+            return true;
+        }
+
         if (SafeType::isZero($amountType)) {
             return true;
         }
