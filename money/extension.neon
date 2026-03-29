@@ -18,3 +18,8 @@ services:
 		class: Brick\Money\PHPStan\CurrencyConverterThrowTypeExtension
 		tags:
 			- phpstan.dynamicMethodThrowTypeExtension
+
+	-
+		class: Brick\Money\PHPStan\ConfigurableProviderBuilderThrowTypeExtension
+		tags:
+			- phpstan.dynamicMethodThrowTypeExtension

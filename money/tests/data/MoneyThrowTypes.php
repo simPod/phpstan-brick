@@ -10,6 +10,7 @@ use Brick\Math\RoundingMode;
 use Brick\Money\Context\CustomContext;
 use Brick\Money\Currency;
 use Brick\Money\CurrencyConverter;
+use Brick\Money\ExchangeRateProvider\Configurable\ConfigurableProviderBuilder;
 use Brick\Money\Money;
 use Brick\Money\RationalMoney;
 use PHPStan\TrinaryLogic;
@@ -391,6 +392,35 @@ class MoneyThrowTypes
     {
         try {
             $result = $a->convertedTo($code, 2);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    // --- ConfigurableProviderBuilder ---
+
+    public function addExchangeRateWithInt(ConfigurableProviderBuilder $builder): void
+    {
+        try {
+            $result = $builder->addExchangeRate('EUR', 'USD', 1);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function addExchangeRateWithBigNumber(ConfigurableProviderBuilder $builder, BigDecimal $rate): void
+    {
+        try {
+            $result = $builder->addExchangeRate('EUR', 'USD', $rate);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function addExchangeRateWithString(ConfigurableProviderBuilder $builder, string $rate): void
+    {
+        try {
+            $result = $builder->addExchangeRate('EUR', 'USD', $rate);
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
