@@ -2,8 +2,10 @@
 /math/vendor/
 /math/composer.lock
 /math/.phpcs-cache
+/math/.phpunit.result.cache
 
 # money
 /money/vendor/
 /money/composer.lock
 /money/.phpcs-cache
+/money/.phpunit.result.cache
