@@ -6,7 +6,7 @@ namespace Brick\Money\PHPStan;
 
 use Brick\Math\Exception\RoundingNecessaryException;
 use Brick\Money\CurrencyConverter;
-use Brick\Money\Exception\CurrencyConversionException;
+use Brick\Money\Exception\ExchangeRateException;
 use Brick\Money\Exception\UnknownCurrencyException;
 use PhpParser\Node\Expr\MethodCall;
 use PHPStan\Analyser\Scope;
@@ -51,15 +51,15 @@ final class CurrencyConverterThrowTypeExtension implements DynamicMethodThrowTyp
         // Check rounding mode for convert() — arg index 3.
         $roundingModeIsSafe = false;
 
-        if ($methodName === 'convert' && isset($args[3])) {
-            $roundingModeIsSafe = SafeType::isSafeRoundingMode($scope->getType($args[3]->value));
+        if ($methodName === 'convert' && isset($args[4])) {
+            $roundingModeIsSafe = SafeType::isSafeRoundingMode($scope->getType($args[4]->value));
         }
 
         if (! $currencyIsSafe && ! $roundingModeIsSafe) {
             return $methodReflection->getThrowType();
         }
 
-        $residualTypes = [new ObjectType(CurrencyConversionException::class)];
+        $residualTypes = [new ObjectType(ExchangeRateException::class)];
 
         if (! $currencyIsSafe) {
             $residualTypes[] = new ObjectType(UnknownCurrencyException::class);

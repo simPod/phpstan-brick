@@ -9,6 +9,7 @@ use Brick\Math\BigInteger;
 use Brick\Math\RoundingMode;
 use Brick\Money\Context\CustomContext;
 use Brick\Money\Currency;
+use Brick\Money\CurrencyConverter;
 use Brick\Money\Money;
 use Brick\Money\RationalMoney;
 use PHPStan\TrinaryLogic;
@@ -323,6 +324,73 @@ class MoneyThrowTypes
     {
         try {
             $result = $bag->getMoney($code);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    // --- CurrencyConverter ---
+
+    public function convertWithSafeCurrency(CurrencyConverter $converter, Money $money): void
+    {
+        try {
+            $result = $converter->convert($money, 'USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function convertWithSafeCurrencyAndRoundingMode(CurrencyConverter $converter, Money $money): void
+    {
+        try {
+            $result = $converter->convert($money, 'USD', [], roundingMode: RoundingMode::Down);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function convertWithUnknownCurrency(CurrencyConverter $converter, Money $money, string $code): void
+    {
+        try {
+            $result = $converter->convert($money, $code);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function convertToRationalWithSafeCurrency(CurrencyConverter $converter, Money $money): void
+    {
+        try {
+            $result = $converter->convertToRational($money, 'USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function convertToRationalWithUnknownCurrency(CurrencyConverter $converter, Money $money, string $code): void
+    {
+        try {
+            $result = $converter->convertToRational($money, $code);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    // --- RationalMoney::convertedTo ---
+
+    public function rationalConvertedToWithSafeArgs(RationalMoney $a, Currency $currency): void
+    {
+        try {
+            $result = $a->convertedTo($currency, 2);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function rationalConvertedToWithUnsafeCurrency(RationalMoney $a, string $code): void
+    {
+        try {
+            $result = $a->convertedTo($code, 2);
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }

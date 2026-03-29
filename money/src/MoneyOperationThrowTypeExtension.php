@@ -8,7 +8,9 @@ use Brick\Math\Exception\DivisionByZeroException;
 use Brick\Math\Exception\NumberFormatException;
 use Brick\Math\Exception\RoundingNecessaryException;
 use Brick\Money\AbstractMoney;
-use Brick\Money\Exception\MoneyMismatchException;
+use Brick\Money\Exception\ContextMismatchException;
+use Brick\Money\Exception\CurrencyMismatchException;
+use Brick\Money\Exception\InvalidArgumentException;
 use Brick\Money\Exception\UnknownCurrencyException;
 use Brick\Money\MoneyBag;
 use Brick\Money\RationalMoney;
@@ -107,7 +109,7 @@ final class MoneyOperationThrowTypeExtension implements DynamicMethodThrowTypeEx
     /**
      * Narrows comparison methods on {@see AbstractMoney}.
      *
-     * AbstractMoney arg -> only {@see MoneyMismatchException}; safe number -> no throw.
+     * AbstractMoney arg -> only {@see CurrencyMismatchException}; safe number -> no throw.
      */
     private function narrowComparison(
         MethodCall $methodCall,
@@ -117,7 +119,7 @@ final class MoneyOperationThrowTypeExtension implements DynamicMethodThrowTypeEx
         $argType = $scope->getType($methodCall->getArgs()[0]->value);
 
         if ((new ObjectType(AbstractMoney::class))->isSuperTypeOf($argType)->yes()) {
-            return new ObjectType(MoneyMismatchException::class);
+            return new ObjectType(CurrencyMismatchException::class);
         }
 
         if (SafeType::isSafeNumber($argType)) {
@@ -162,7 +164,7 @@ final class MoneyOperationThrowTypeExtension implements DynamicMethodThrowTypeEx
         // RationalMoney: no rounding concern. Safe arg -> no throw (except dividedBy zero).
         if ($isRational) {
             if ($argIsAbstractMoney) {
-                $residual = [new ObjectType(MoneyMismatchException::class)];
+                $residual = [new ObjectType(CurrencyMismatchException::class)];
 
                 if ($methodName === 'dividedBy' && ! SafeType::isNonZero($argType)) {
                     $residual[] = new ObjectType(DivisionByZeroException::class);
@@ -190,9 +192,10 @@ final class MoneyOperationThrowTypeExtension implements DynamicMethodThrowTypeEx
         // Money: build residual throw types.
         $residualTypes = [];
 
-        // MoneyMismatchException when arg is AbstractMoney (currency/context mismatch).
+        // CurrencyMismatchException / ContextMismatchException when arg is AbstractMoney.
         if ($argIsAbstractMoney) {
-            $residualTypes[] = new ObjectType(MoneyMismatchException::class);
+            $residualTypes[] = new ObjectType(CurrencyMismatchException::class);
+            $residualTypes[] = new ObjectType(ContextMismatchException::class);
         }
 
         // NumberFormatException when arg is not safe (parsing risk).
@@ -255,7 +258,8 @@ final class MoneyOperationThrowTypeExtension implements DynamicMethodThrowTypeEx
             return $methodReflection->getThrowType();
         }
 
-        $residualTypes = [];
+        // InvalidArgumentException is always possible (negative/zero exchange rate).
+        $residualTypes = [new ObjectType(InvalidArgumentException::class)];
 
         if (! $currencyIsSafe) {
             $residualTypes[] = new ObjectType(UnknownCurrencyException::class);
@@ -263,10 +267,6 @@ final class MoneyOperationThrowTypeExtension implements DynamicMethodThrowTypeEx
 
         if (! $rateIsSafe) {
             $residualTypes[] = new ObjectType(NumberFormatException::class);
-        }
-
-        if ($residualTypes === []) {
-            return null;
         }
 
         return TypeCombinator::union(...$residualTypes);
