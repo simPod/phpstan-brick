@@ -163,6 +163,24 @@ class MoneyThrowTypes
         }
     }
 
+    public function ofWithRoundingMode(BigDecimal $amount): void
+    {
+        try {
+            $result = Money::of($amount, 'USD', roundingMode: RoundingMode::HalfUp);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofMinorWithRoundingMode(BigDecimal $amount): void
+    {
+        try {
+            $result = Money::ofMinor($amount, 'USD', roundingMode: RoundingMode::HalfUp);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
     // --- Comparison methods ---
 
     public function compareToWithInt(Money $a): void
