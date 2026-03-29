@@ -6,6 +6,7 @@ namespace Brick\Money\PHPStan;
 
 use Brick\Math\Exception\NumberFormatException;
 use Brick\Money\AbstractMoney;
+use Brick\Money\Exception\InvalidArgumentException;
 use Brick\Money\Exception\UnknownCurrencyException;
 use Brick\Money\Money;
 use PhpParser\Node\Expr\MethodCall;
@@ -71,10 +72,11 @@ final class MoneyRoundingModeThrowTypeExtension implements DynamicMethodThrowTyp
             return null;
         }
 
-        // convertedTo: UnknownCurrencyException + NumberFormatException remain.
+        // convertedTo: UnknownCurrencyException + NumberFormatException + InvalidArgumentException remain.
         return TypeCombinator::union(
             new ObjectType(UnknownCurrencyException::class),
             new ObjectType(NumberFormatException::class),
+            new ObjectType(InvalidArgumentException::class),
         );
     }
 }
