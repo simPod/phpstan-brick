@@ -34,7 +34,7 @@ jobs:
           tools: "cs2pr"
 
       - name: "Install dependencies with Composer"
-        uses: "ramsey/composer-install@v3"
+        uses: "ramsey/composer-install@4.0.0"
         with:
           working-directory: "${{ matrix.package }}"
 
