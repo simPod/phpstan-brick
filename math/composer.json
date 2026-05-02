@@ -23,7 +23,8 @@
         "allow-plugins": {
             "dealerdirect/phpcodesniffer-composer-installer": true
         },
-        "lock": false
+        "lock": false,
+        "sort-packages": true
     },
     "autoload": {
         "psr-4": {
