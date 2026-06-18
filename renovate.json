@@ -1,5 +1,12 @@
 {
   "extends": [
       "github>simPod/renovatebot-presets:php-lib"
+  ],
+  "packageRules": [
+    {
+      "matchManagers": ["composer"],
+      "matchPackageNames": ["brick/*"],
+      "rangeStrategy": "widen"
+    }
   ]
 }
