@@ -6,10 +6,13 @@ namespace Brick\Money\PHPStan\Tests\Data;
 
 use Brick\Math\BigDecimal;
 use Brick\Math\BigInteger;
+use Brick\Math\Exception\RoundingNecessaryException;
 use Brick\Math\RoundingMode;
 use Brick\Money\Context\CustomContext;
 use Brick\Money\Currency;
 use Brick\Money\CurrencyConverter;
+use Brick\Money\Exception\ExchangeRateException;
+use Brick\Money\Exception\UnknownCurrencyException;
 use Brick\Money\Money;
 use Brick\Money\RationalMoney;
 use PHPStan\TrinaryLogic;
@@ -340,12 +343,16 @@ class MoneyThrowTypes
         }
     }
 
-    public function convertWithSafeCurrencyAndRoundingMode(CurrencyConverter $converter, Money $money): void
-    {
+    public function convertWithSafeCurrencyCatchingResidualExceptions(
+        CurrencyConverter $converter,
+        Money $money,
+    ): void {
         try {
-            $result = $converter->convert($money, 'USD', [], roundingMode: RoundingMode::Down);
+            $result = $converter->convert($money, 'USD');
+        } catch (ExchangeRateException | RoundingNecessaryException) {
+            $result = $money;
         } finally {
-            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
         }
     }
 
@@ -355,6 +362,34 @@ class MoneyThrowTypes
             $result = $converter->convert($money, $code);
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function convertWithUnknownCurrencyAndSkippedNamedSafeRoundingMode(
+        CurrencyConverter $converter,
+        Money $money,
+        string $code,
+    ): void {
+        try {
+            $result = $converter->convert($money, $code, roundingMode: RoundingMode::Down);
+        } catch (ExchangeRateException | UnknownCurrencyException) {
+            $result = $money;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function convertWithUnknownCurrencyAndPositionalSafeRoundingMode(
+        CurrencyConverter $converter,
+        Money $money,
+        string $code,
+    ): void {
+        try {
+            $result = $converter->convert($money, $code, new CustomContext(2), RoundingMode::Down);
+        } catch (ExchangeRateException | UnknownCurrencyException) {
+            $result = $money;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
         }
     }
 
