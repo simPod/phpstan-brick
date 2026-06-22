@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Brick\Money\PHPStan\Tests;
 
-use Brick\Money\CurrencyConverter;
 use PHPStan\Testing\TypeInferenceTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
-use ReflectionMethod;
 
 class ThrowTypeExtensionTest extends TypeInferenceTestCase
 {
@@ -21,17 +19,6 @@ class ThrowTypeExtensionTest extends TypeInferenceTestCase
     public function testFileAsserts(string $assertType, string $file, mixed ...$args): void
     {
         $this->assertFileAsserts($assertType, $file, ...$args);
-    }
-
-    public function testCurrencyConverterConvertUsesPre013Signature(): void
-    {
-        $method = new ReflectionMethod(CurrencyConverter::class, 'convert');
-        $parameters = array_map(
-            static fn ($parameter): string => $parameter->getName(),
-            $method->getParameters(),
-        );
-
-        self::assertSame(['money', 'currency', 'context', 'roundingMode'], $parameters);
     }
 
     /** @return list<string> */

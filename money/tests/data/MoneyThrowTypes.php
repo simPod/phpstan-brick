@@ -359,7 +359,7 @@ class MoneyThrowTypes
     public function convertWithSafeCurrencyAndRoundingMode(CurrencyConverter $converter, Money $money): void
     {
         try {
-            $result = $converter->convert($money, 'USD', [], roundingMode: RoundingMode::Down);
+            $result = $converter->convert($money, 'USD', new CustomContext(2), RoundingMode::Down);
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
@@ -380,7 +380,21 @@ class MoneyThrowTypes
         string $code,
     ): void {
         try {
-            $result = $converter->convert($money, $code, [], roundingMode: RoundingMode::Down);
+            $result = $converter->convert($money, $code, new CustomContext(2), RoundingMode::Down);
+        } catch (ExchangeRateException | UnknownCurrencyException) {
+            $result = $money;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function convertWithUnknownCurrencyAndSkippedNamedSafeRoundingMode(
+        CurrencyConverter $converter,
+        Money $money,
+        string $code,
+    ): void {
+        try {
+            $result = $converter->convert($money, $code, roundingMode: RoundingMode::Down);
         } catch (ExchangeRateException | UnknownCurrencyException) {
             $result = $money;
         } finally {
