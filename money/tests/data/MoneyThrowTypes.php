@@ -520,36 +520,14 @@ class MoneyThrowTypes
         }
     }
 
-    public function convertedToWithSafeArgsCatchingResidualException(Money $a, Currency $currency): void
+    public function convertedToWithSafeRoundingCatchingNonRoundingExceptions(Money $a, Currency $currency): void
     {
         try {
             $result = $a->convertedTo($currency, 2, roundingMode: RoundingMode::Down);
-        } catch (InvalidArgumentException) {
+        } catch (UnknownCurrencyException | NumberFormatException | InvalidArgumentException) {
             $result = $a;
         } finally {
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
-        }
-    }
-
-    public function convertedToWithUnknownCurrencyCatchingNonCurrencyExceptions(Money $a, string $code): void
-    {
-        try {
-            $result = $a->convertedTo($code, 2, roundingMode: RoundingMode::Down);
-        } catch (NumberFormatException | InvalidArgumentException) {
-            $result = $a;
-        } finally {
-            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
-        }
-    }
-
-    public function convertedToWithUnsafeRateCatchingNonNumberExceptions(Money $a, Currency $currency, string $rate): void
-    {
-        try {
-            $result = $a->convertedTo($currency, $rate, roundingMode: RoundingMode::Down);
-        } catch (UnknownCurrencyException | InvalidArgumentException) {
-            $result = $a;
-        } finally {
-            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
     }
 
