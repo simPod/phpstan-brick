@@ -6,12 +6,17 @@ namespace Brick\Money\PHPStan\Tests\Data;
 
 use Brick\Math\BigDecimal;
 use Brick\Math\BigInteger;
+use Brick\Math\Exception\DivisionByZeroException;
+use Brick\Math\Exception\NumberFormatException;
 use Brick\Math\Exception\RoundingNecessaryException;
 use Brick\Math\RoundingMode;
 use Brick\Money\Context\CustomContext;
 use Brick\Money\Currency;
 use Brick\Money\CurrencyConverter;
+use Brick\Money\Exception\ContextMismatchException;
+use Brick\Money\Exception\CurrencyMismatchException;
 use Brick\Money\Exception\ExchangeRateException;
+use Brick\Money\Exception\InvalidArgumentException;
 use Brick\Money\Exception\UnknownCurrencyException;
 use Brick\Money\Money;
 use Brick\Money\RationalMoney;
@@ -50,6 +55,50 @@ class MoneyThrowTypes
         }
     }
 
+    public function ofStringWithKnownCurrencyCatchingCurrencyAndRoundingExceptions(string $amount): void
+    {
+        try {
+            $result = Money::of($amount, 'USD');
+        } catch (UnknownCurrencyException | RoundingNecessaryException) {
+            $result = Money::zero('USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function ofIntWithUnknownCurrencyCatchingCurrencyException(string $code): void
+    {
+        try {
+            $result = Money::of(100, $code);
+        } catch (UnknownCurrencyException) {
+            $result = Money::zero('USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofStringWithKnownCurrencyCatchingNumberAndRoundingExceptions(string $amount): void
+    {
+        try {
+            $result = Money::of($amount, 'USD');
+        } catch (NumberFormatException | RoundingNecessaryException) {
+            $result = Money::zero('USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofStringWithUnknownCurrencyCatchingNumberAndRoundingExceptions(string $amount, string $code): void
+    {
+        try {
+            $result = Money::of($amount, $code);
+        } catch (NumberFormatException | RoundingNecessaryException) {
+            $result = Money::zero('USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
     public function zeroWithKnownCurrency(): void
     {
         try {
@@ -65,6 +114,17 @@ class MoneyThrowTypes
             $result = Money::zero($code);
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function zeroWithUnknownCurrencyCatchingCurrencyException(string $code): void
+    {
+        try {
+            $result = Money::zero($code);
+        } catch (UnknownCurrencyException) {
+            $result = Money::zero('USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
         }
     }
 
@@ -110,6 +170,28 @@ class MoneyThrowTypes
             $result = RationalMoney::of(100, $currency);
         } finally {
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function rationalMoneyOfWithUnsafeAmountCatchingCurrencyException(string $amount, Currency $currency): void
+    {
+        try {
+            $result = RationalMoney::of($amount, $currency);
+        } catch (UnknownCurrencyException) {
+            $result = RationalMoney::of(100, 'USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function rationalMoneyOfWithUnknownCurrencyCatchingNumberException(string $code): void
+    {
+        try {
+            $result = RationalMoney::of(100, $code);
+        } catch (NumberFormatException) {
+            $result = RationalMoney::of(100, 'USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
     }
 
@@ -176,6 +258,17 @@ class MoneyThrowTypes
         }
     }
 
+    public function ofDecimalWithoutRoundingModeCatchingNumberAndCurrencyExceptions(BigDecimal $amount): void
+    {
+        try {
+            $result = Money::of($amount, 'USD');
+        } catch (NumberFormatException | UnknownCurrencyException) {
+            $result = Money::zero('USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
     public function ofMinorWithRoundingMode(BigDecimal $amount): void
     {
         try {
@@ -205,6 +298,17 @@ class MoneyThrowTypes
         }
     }
 
+    public function compareToWithMoneyCatchingCurrencyMismatch(Money $a, Money $b): void
+    {
+        try {
+            $result = $a->compareTo($b);
+        } catch (CurrencyMismatchException) {
+            $result = 0;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
     // --- Arithmetic methods ---
 
     public function plusWithSafeRounding(Money $a): void
@@ -225,10 +329,63 @@ class MoneyThrowTypes
         }
     }
 
+    public function plusWithUnsafeNumberCatchingRoundingException(Money $a, string $number): void
+    {
+        try {
+            $result = $a->plus($number, RoundingMode::Down);
+        } catch (RoundingNecessaryException) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function plusWithMoneyCatchingMoneyExceptions(Money $a, Money $b): void
+    {
+        try {
+            $result = $a->plus($b, RoundingMode::Down);
+        } catch (CurrencyMismatchException | ContextMismatchException) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
     public function dividedByWithUnnecessaryRounding(Money $a): void
     {
         try {
             $result = $a->dividedBy(3, RoundingMode::Unnecessary);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function dividedByMaybeZeroIntWithSafeRounding(Money $a, int $divisor): void
+    {
+        try {
+            $result = $a->dividedBy($divisor, RoundingMode::Down);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function dividedByMaybeZeroIntWithSafeRoundingCatchingDivisionByZero(Money $a, int $divisor): void
+    {
+        try {
+            $result = $a->dividedBy($divisor, RoundingMode::Down);
+        } catch (DivisionByZeroException) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function dividedByWithUnnecessaryRoundingCatchingDivisionByZero(Money $a): void
+    {
+        try {
+            $result = $a->dividedBy(3, RoundingMode::Unnecessary);
+        } catch (DivisionByZeroException) {
+            $result = $a;
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
@@ -301,6 +458,48 @@ class MoneyThrowTypes
         }
     }
 
+    public function rationalDividedByWithNonZeroInt(RationalMoney $a): void
+    {
+        try {
+            $result = $a->dividedBy(3);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function rationalDividedByWithMaybeZeroInt(RationalMoney $a, int $divisor): void
+    {
+        try {
+            $result = $a->dividedBy($divisor);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function rationalDividedByWithMaybeZeroIntCatchingDivisionByZero(
+        RationalMoney $a,
+        int $divisor,
+    ): void {
+        try {
+            $result = $a->dividedBy($divisor);
+        } catch (DivisionByZeroException) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function rationalDividedByWithStringCatchingDivisionByZero(RationalMoney $a, string $s): void
+    {
+        try {
+            $result = $a->dividedBy($s);
+        } catch (DivisionByZeroException) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
     // --- Rounding mode methods ---
 
     public function toContextWithSafeRounding(Money $a): void
@@ -309,6 +508,37 @@ class MoneyThrowTypes
             $result = $a->toContext($a->getContext(), RoundingMode::Down);
         } finally {
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function toContextWithUnnecessaryRounding(Money $a): void
+    {
+        try {
+            $result = $a->toContext($a->getContext(), RoundingMode::Unnecessary);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function convertedToWithSafeRoundingCatchingNonRoundingExceptions(Money $a, Currency $currency): void
+    {
+        try {
+            $result = $a->convertedTo($currency, 2, roundingMode: RoundingMode::Down);
+        } catch (UnknownCurrencyException | NumberFormatException | InvalidArgumentException) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function convertedToWithUnsafeRoundingCatchingNonRoundingExceptions(Money $a, Currency $currency): void
+    {
+        try {
+            $result = $a->convertedTo($currency, 2, roundingMode: RoundingMode::Unnecessary);
+        } catch (UnknownCurrencyException | NumberFormatException | InvalidArgumentException) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
     }
 
@@ -329,6 +559,17 @@ class MoneyThrowTypes
             $result = $bag->getMoney($code);
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function getMoneyWithUnknownCurrencyCatchingCurrencyException(\Brick\Money\MoneyBag $bag, string $code): void
+    {
+        try {
+            $result = $bag->getMoney($code);
+        } catch (UnknownCurrencyException) {
+            $result = $bag->getMoney('USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
         }
     }
 
@@ -365,6 +606,20 @@ class MoneyThrowTypes
         }
     }
 
+    public function convertWithUnknownCurrencyCatchingNonCurrencyExceptions(
+        CurrencyConverter $converter,
+        Money $money,
+        string $code,
+    ): void {
+        try {
+            $result = $converter->convert($money, $code);
+        } catch (ExchangeRateException | RoundingNecessaryException) {
+            $result = $money;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
     public function convertWithUnknownCurrencyAndSkippedNamedSafeRoundingMode(
         CurrencyConverter $converter,
         Money $money,
@@ -388,10 +643,37 @@ class MoneyThrowTypes
         }
     }
 
+    public function convertToRationalWithSafeCurrencyCatchingResidualException(
+        CurrencyConverter $converter,
+        Money $money,
+    ): void {
+        try {
+            $result = $converter->convertToRational($money, 'USD');
+        } catch (ExchangeRateException) {
+            $result = $money->toRational();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
     public function convertToRationalWithUnknownCurrency(CurrencyConverter $converter, Money $money, string $code): void
     {
         try {
             $result = $converter->convertToRational($money, $code);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function convertToRationalWithUnknownCurrencyCatchingNonCurrencyException(
+        CurrencyConverter $converter,
+        Money $money,
+        string $code,
+    ): void {
+        try {
+            $result = $converter->convertToRational($money, $code);
+        } catch (ExchangeRateException) {
+            $result = $money->toRational();
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
@@ -408,10 +690,50 @@ class MoneyThrowTypes
         }
     }
 
+    public function rationalConvertedToWithSafeArgsCatchingResidualException(
+        RationalMoney $a,
+        Currency $currency,
+    ): void {
+        try {
+            $result = $a->convertedTo($currency, 2);
+        } catch (InvalidArgumentException) {
+            $result = Money::zero('USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
     public function rationalConvertedToWithUnsafeCurrency(RationalMoney $a, string $code): void
     {
         try {
             $result = $a->convertedTo($code, 2);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function rationalConvertedToWithUnsafeCurrencyCatchingNonCurrencyExceptions(
+        RationalMoney $a,
+        string $code,
+    ): void {
+        try {
+            $result = $a->convertedTo($code, 2);
+        } catch (NumberFormatException | InvalidArgumentException) {
+            $result = Money::zero('USD');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function rationalConvertedToWithUnsafeRateCatchingNonNumberExceptions(
+        RationalMoney $a,
+        Currency $currency,
+        string $rate,
+    ): void {
+        try {
+            $result = $a->convertedTo($currency, $rate);
+        } catch (UnknownCurrencyException | InvalidArgumentException) {
+            $result = Money::zero('USD');
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
