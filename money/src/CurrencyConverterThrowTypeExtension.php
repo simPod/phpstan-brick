@@ -48,11 +48,14 @@ final class CurrencyConverterThrowTypeExtension implements DynamicMethodThrowTyp
         $currencyType = $scope->getType($args[1]->value);
         $currencyIsSafe = SafeType::isSafeCurrency($currencyType);
 
-        // Check rounding mode for convert() — arg index 3.
         $roundingModeIsSafe = false;
 
-        if ($methodName === 'convert' && isset($args[4])) {
-            $roundingModeIsSafe = SafeType::isSafeRoundingMode($scope->getType($args[4]->value));
+        if ($methodName === 'convert') {
+            $roundingModeArg = $args[4] ?? null;
+
+            if ($roundingModeArg !== null) {
+                $roundingModeIsSafe = SafeType::isSafeRoundingMode($scope->getType($roundingModeArg->value));
+            }
         }
 
         if (! $currencyIsSafe && ! $roundingModeIsSafe) {
