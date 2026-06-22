@@ -8,15 +8,28 @@ on:
 
 jobs:
   static-analysis-phpstan:
-    name: "PHPStan - ${{ matrix.package }}"
+    name: "PHPStan - ${{ matrix.package }} / ${{ matrix.dependency }} ${{ matrix.dependency-version }}"
     runs-on: "ubuntu-24.04"
 
     strategy:
       fail-fast: false
       matrix:
-        package:
-          - "math"
-          - "money"
+        include:
+          - package: "math"
+            dependency: "brick/math"
+            dependency-version: "^0.15"
+          - package: "math"
+            dependency: "brick/math"
+            dependency-version: "^0.16"
+          - package: "math"
+            dependency: "brick/math"
+            dependency-version: "^0.17"
+          - package: "math"
+            dependency: "brick/math"
+            dependency-version: "^0.18"
+          - package: "money"
+            dependency: "brick/money"
+            dependency-version: "^0.13"
 
     defaults:
       run:
@@ -32,6 +45,9 @@ jobs:
           coverage: "none"
           php-version: "8.4"
           tools: "cs2pr"
+
+      - name: "Select ${{ matrix.dependency }} ${{ matrix.dependency-version }}"
+        run: "composer require --no-interaction --no-update ${{ matrix.dependency }}:${{ matrix.dependency-version }}"
 
       - name: "Install dependencies with Composer"
         uses: "ramsey/composer-install@4.0.0"

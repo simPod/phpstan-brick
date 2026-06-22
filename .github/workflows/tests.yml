@@ -8,18 +8,53 @@ on:
 
 jobs:
   phpunit:
-    name: "PHPUnit - ${{ matrix.package }} / PHP ${{ matrix.php-version }}"
+    name: "PHPUnit - ${{ matrix.package }} / ${{ matrix.dependency }} ${{ matrix.dependency-version }} / PHP ${{ matrix.php-version }}"
     runs-on: "ubuntu-24.04"
 
     strategy:
       fail-fast: false
       matrix:
-        package:
-          - "math"
-          - "money"
-        php-version:
-          - "8.4"
-          - "8.5"
+        include:
+          - package: "math"
+            dependency: "brick/math"
+            dependency-version: "^0.15"
+            php-version: "8.4"
+          - package: "math"
+            dependency: "brick/math"
+            dependency-version: "^0.15"
+            php-version: "8.5"
+          - package: "math"
+            dependency: "brick/math"
+            dependency-version: "^0.16"
+            php-version: "8.4"
+          - package: "math"
+            dependency: "brick/math"
+            dependency-version: "^0.16"
+            php-version: "8.5"
+          - package: "math"
+            dependency: "brick/math"
+            dependency-version: "^0.17"
+            php-version: "8.4"
+          - package: "math"
+            dependency: "brick/math"
+            dependency-version: "^0.17"
+            php-version: "8.5"
+          - package: "math"
+            dependency: "brick/math"
+            dependency-version: "^0.18"
+            php-version: "8.4"
+          - package: "math"
+            dependency: "brick/math"
+            dependency-version: "^0.18"
+            php-version: "8.5"
+          - package: "money"
+            dependency: "brick/money"
+            dependency-version: "^0.13"
+            php-version: "8.4"
+          - package: "money"
+            dependency: "brick/money"
+            dependency-version: "^0.13"
+            php-version: "8.5"
 
     defaults:
       run:
@@ -34,6 +69,9 @@ jobs:
         with:
           coverage: "none"
           php-version: "${{ matrix.php-version }}"
+
+      - name: "Select ${{ matrix.dependency }} ${{ matrix.dependency-version }}"
+        run: "composer require --no-interaction --no-update ${{ matrix.dependency }}:${{ matrix.dependency-version }}"
 
       - name: "Install dependencies with Composer"
         uses: "ramsey/composer-install@4.0.0"
