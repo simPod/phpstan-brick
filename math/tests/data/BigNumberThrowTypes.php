@@ -8,6 +8,12 @@ use Brick\Math\BigDecimal;
 use Brick\Math\BigInteger;
 use Brick\Math\BigNumber;
 use Brick\Math\BigRational;
+use Brick\Math\Exception\DivisionByZeroException;
+use Brick\Math\Exception\IntegerOverflowException;
+use Brick\Math\Exception\InvalidArgumentException;
+use Brick\Math\Exception\MathException;
+use Brick\Math\Exception\NegativeNumberException;
+use Brick\Math\Exception\RoundingNecessaryException;
 use Brick\Math\RoundingMode;
 use PHPStan\TrinaryLogic;
 
@@ -44,6 +50,57 @@ class BigNumberThrowTypes
         }
     }
 
+    public function ofWithStringCatchingDivisionByZero(string $s): void
+    {
+        try {
+            $result = BigInteger::of($s);
+        } catch (DivisionByZeroException) {
+            $result = BigInteger::zero();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function ofFractionWithNonZeroDenominator(): void
+    {
+        try {
+            $result = BigRational::ofFraction(1, 2);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofFractionWithNonZeroDenominatorCatchingDivisionByZero(): void
+    {
+        try {
+            $result = BigRational::ofFraction(1, 2);
+        } catch (DivisionByZeroException) {
+            $result = BigRational::zero();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofFractionWithMaybeZeroDenominator(int $denominator): void
+    {
+        try {
+            $result = BigRational::ofFraction(1, $denominator);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function ofFractionWithMaybeZeroDenominatorCatchingDivisionByZero(int $denominator): void
+    {
+        try {
+            $result = BigRational::ofFraction(1, $denominator);
+        } catch (DivisionByZeroException) {
+            $result = BigRational::zero();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
     // --- Conversion methods ---
 
     public function toBigIntegerOnBigInteger(BigInteger $a): void
@@ -59,6 +116,39 @@ class BigNumberThrowTypes
     {
         try {
             $result = $a->toBigDecimal();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function toBigDecimalOnBigRationalCatchingRounding(BigRational $a): void
+    {
+        try {
+            $result = $a->toBigDecimal();
+        } catch (RoundingNecessaryException) {
+            $result = BigDecimal::zero();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function toIntOnBigIntegerCatchingOverflow(BigInteger $a): void
+    {
+        try {
+            $result = $a->toInt();
+        } catch (IntegerOverflowException) {
+            $result = 0;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function toIntOnBigDecimalCatchingOverflow(BigDecimal $a): void
+    {
+        try {
+            $result = $a->toInt();
+        } catch (IntegerOverflowException) {
+            $result = 0;
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
@@ -93,12 +183,34 @@ class BigNumberThrowTypes
         }
     }
 
+    public function plusWithStringCatchingParsingException(BigInteger $a, string $s): void
+    {
+        try {
+            $result = $a->plus($s);
+        } catch (MathException) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
     public function quotientMayThrowDivisionByZero(BigInteger $a, BigInteger $b): void
     {
         try {
             $result = $a->quotient($b);
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function quotientMayThrowDivisionByZeroCatchingDivisionByZero(BigInteger $a, BigInteger $b): void
+    {
+        try {
+            $result = $a->quotient($b);
+        } catch (DivisionByZeroException) {
+            $result = BigInteger::zero();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
         }
     }
 
@@ -109,6 +221,17 @@ class BigNumberThrowTypes
             $result = $a->quotient($divisor);
         } finally {
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function quotientWithStringCatchingDivisionByZero(BigInteger $a, string $divisor): void
+    {
+        try {
+            $result = $a->quotient($divisor);
+        } catch (DivisionByZeroException) {
+            $result = BigInteger::zero();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
     }
 
@@ -189,6 +312,51 @@ class BigNumberThrowTypes
         }
     }
 
+    /** @param int<0, max> $scale */
+    public function toScaleWithNonNegativeScaleCatchingRounding(BigDecimal $a, int $scale): void
+    {
+        try {
+            $result = $a->toScale($scale, RoundingMode::Unnecessary);
+        } catch (RoundingNecessaryException) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function toScaleWithMaybeNegativeScaleCatchingRounding(BigDecimal $a, int $scale): void
+    {
+        try {
+            $result = $a->toScale($scale, RoundingMode::Unnecessary);
+        } catch (RoundingNecessaryException) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function toScaleWithSafeRoundingCatchingInvalidScale(BigDecimal $a, int $scale): void
+    {
+        try {
+            $result = $a->toScale($scale, RoundingMode::Down);
+        } catch (InvalidArgumentException) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function toScaleWithMaybeNegativeScaleCatchingInvalidScale(BigDecimal $a, int $scale): void
+    {
+        try {
+            $result = $a->toScale($scale, RoundingMode::Down);
+        } catch (InvalidArgumentException) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
     public function dividedByWithSafeRounding(BigInteger $a, BigInteger $b): void
     {
         try {
@@ -198,11 +366,44 @@ class BigNumberThrowTypes
         }
     }
 
+    public function dividedByWithSafeRoundingCatchingNonRoundingExceptions(BigInteger $a, BigInteger $b): void
+    {
+        try {
+            $result = $a->dividedBy($b, RoundingMode::Down);
+        } catch (MathException | DivisionByZeroException) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
     /** @param int<1, max> $divisor */
     public function dividedByWithSafeRoundingAndNonZero(BigInteger $a, int $divisor): void
     {
         try {
             $result = $a->dividedBy($divisor, RoundingMode::Down);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function dividedByWithMaybeZeroIntCatchingDivisionByZero(BigInteger $a, int $divisor): void
+    {
+        try {
+            $result = $a->dividedBy($divisor, RoundingMode::Down);
+        } catch (DivisionByZeroException) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function sqrtWithSafeRoundingCatchingNegativeNumber(BigDecimal $a): void
+    {
+        try {
+            $result = $a->sqrt(2, RoundingMode::Down);
+        } catch (NegativeNumberException) {
+            $result = BigDecimal::zero();
         } finally {
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
         }
