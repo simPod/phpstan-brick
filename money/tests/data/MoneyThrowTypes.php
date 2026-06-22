@@ -379,20 +379,6 @@ class MoneyThrowTypes
         }
     }
 
-    public function convertWithUnknownCurrencyAndPositionalSafeRoundingMode(
-        CurrencyConverter $converter,
-        Money $money,
-        string $code,
-    ): void {
-        try {
-            $result = $converter->convert($money, $code, new CustomContext(2), RoundingMode::Down);
-        } catch (ExchangeRateException | UnknownCurrencyException) {
-            $result = $money;
-        } finally {
-            assertVariableCertainty(TrinaryLogic::createYes(), $result);
-        }
-    }
-
     public function convertToRationalWithSafeCurrency(CurrencyConverter $converter, Money $money): void
     {
         try {
