@@ -30,6 +30,9 @@ jobs:
           - package: "money"
             dependency: "brick/money"
             dependency-version: "^0.13"
+          - package: "money"
+            dependency: "brick/money"
+            dependency-version: "^0.14"
 
     defaults:
       run:

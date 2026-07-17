@@ -55,6 +55,14 @@ jobs:
             dependency: "brick/money"
             dependency-version: "^0.13"
             php-version: "8.5"
+          - package: "money"
+            dependency: "brick/money"
+            dependency-version: "^0.14"
+            php-version: "8.4"
+          - package: "money"
+            dependency: "brick/money"
+            dependency-version: "^0.14"
+            php-version: "8.5"
 
     defaults:
       run:
