@@ -48,7 +48,7 @@ final class SafeType
      */
     public static function isSafeCurrency(Type $type): bool
     {
-        if ((new ObjectType(Currency::class))->isSuperTypeOf($type)->yes()) {
+        if (new ObjectType(Currency::class)->isSuperTypeOf($type)->yes()) {
             return true;
         }
 
@@ -88,7 +88,7 @@ final class SafeType
      */
     public static function isInteger(Type $type): bool
     {
-        return (new IntegerType())->isSuperTypeOf($type)->yes();
+        return new IntegerType()->isSuperTypeOf($type)->yes();
     }
 
     /**
@@ -98,7 +98,7 @@ final class SafeType
      */
     public static function isZero(Type $type): bool
     {
-        return (new ConstantIntegerType(0))->isSuperTypeOf($type)->yes();
+        return new ConstantIntegerType(0)->isSuperTypeOf($type)->yes();
     }
 
     /**
@@ -109,7 +109,7 @@ final class SafeType
      */
     public static function isNonZero(Type $type): bool
     {
-        if (! (new IntegerType())->isSuperTypeOf($type)->yes()) {
+        if (! new IntegerType()->isSuperTypeOf($type)->yes()) {
             return false;
         }
 
@@ -131,7 +131,7 @@ final class SafeType
     private static function getKnownCurrencies(): array
     {
         if (self::$knownCurrencies === null) {
-            $currencyClassFile = (new ReflectionClass(Currency::class))->getFileName();
+            $currencyClassFile = new ReflectionClass(Currency::class)->getFileName();
             assert($currencyClassFile !== false);
 
             /** @var array<string, mixed> $data */
