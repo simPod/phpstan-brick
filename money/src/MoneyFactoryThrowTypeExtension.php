@@ -124,7 +124,7 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
             return true;
         }
 
-        if (! (new IntegerType())->isSuperTypeOf($amountType)->yes()) {
+        if (! new IntegerType()->isSuperTypeOf($amountType)->yes()) {
             return false;
         }
 

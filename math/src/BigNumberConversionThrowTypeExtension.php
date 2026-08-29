@@ -62,7 +62,7 @@ final class BigNumberConversionThrowTypeExtension implements DynamicMethodThrowT
 
         if ($methodName === 'toInt') {
             // BigInteger::toInt() can only throw IntegerOverflowException (no RoundingNecessaryException).
-            if ((new ObjectType(BigInteger::class))->isSuperTypeOf($callerType)->yes()) {
+            if (new ObjectType(BigInteger::class)->isSuperTypeOf($callerType)->yes()) {
                 return new ObjectType(IntegerOverflowException::class);
             }
 
@@ -71,7 +71,7 @@ final class BigNumberConversionThrowTypeExtension implements DynamicMethodThrowT
 
         $targetClass = self::MethodToClass[$methodName];
 
-        if ((new ObjectType($targetClass))->isSuperTypeOf($callerType)->yes()) {
+        if (new ObjectType($targetClass)->isSuperTypeOf($callerType)->yes()) {
             return null;
         }
 
@@ -106,7 +106,7 @@ final class BigNumberConversionThrowTypeExtension implements DynamicMethodThrowT
 
         $scaleType = $scope->getType($args[0]->value);
 
-        if (! (new ConstantIntegerType(0))->isSuperTypeOf($scaleType)->yes()) {
+        if (! new ConstantIntegerType(0)->isSuperTypeOf($scaleType)->yes()) {
             return false;
         }
 

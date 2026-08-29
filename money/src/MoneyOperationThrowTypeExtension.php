@@ -118,7 +118,7 @@ final class MoneyOperationThrowTypeExtension implements DynamicMethodThrowTypeEx
     ): Type|null {
         $argType = $scope->getType($methodCall->getArgs()[0]->value);
 
-        if ((new ObjectType(AbstractMoney::class))->isSuperTypeOf($argType)->yes()) {
+        if (new ObjectType(AbstractMoney::class)->isSuperTypeOf($argType)->yes()) {
             return new ObjectType(CurrencyMismatchException::class);
         }
 
@@ -142,13 +142,13 @@ final class MoneyOperationThrowTypeExtension implements DynamicMethodThrowTypeEx
         MethodReflection $methodReflection,
     ): Type|null {
         $callerType = $scope->getType($methodCall->var);
-        $isRational = (new ObjectType(RationalMoney::class))->isSuperTypeOf($callerType)->yes();
+        $isRational = new ObjectType(RationalMoney::class)->isSuperTypeOf($callerType)->yes();
 
         $args = $methodCall->getArgs();
         $argType = $scope->getType($args[0]->value);
 
         $argIsSafeNumber = SafeType::isSafeNumber($argType);
-        $argIsAbstractMoney = (new ObjectType(AbstractMoney::class))->isSuperTypeOf($argType)->yes();
+        $argIsAbstractMoney = new ObjectType(AbstractMoney::class)->isSuperTypeOf($argType)->yes();
         $argIsSafe = $argIsSafeNumber || $argIsAbstractMoney;
 
         $roundingModeIsSafe = false;
