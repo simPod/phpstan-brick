@@ -17,22 +17,22 @@ jobs:
         include:
           - package: "math"
             dependency: "brick/math"
-            dependency-version: "^0.17"
-          - package: "math"
-            dependency: "brick/math"
-            dependency-version: "^0.18"
-          - package: "math"
-            dependency: "brick/math"
             dependency-version: "^0.19"
           - package: "math"
             dependency: "brick/math"
             dependency-version: "^0.20"
+          - package: "math"
+            dependency: "brick/math"
+            dependency-version: "^1.0"
           - package: "money"
             dependency: "brick/money"
             dependency-version: "^0.13"
           - package: "money"
             dependency: "brick/money"
             dependency-version: "^0.14"
+          - package: "money"
+            dependency: "brick/money"
+            dependency-version: "^0.15"
 
     defaults:
       run:
