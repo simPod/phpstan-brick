@@ -11,7 +11,7 @@ on:
 jobs:
   split_math:
     name: "Split - math"
-    runs-on: "ubuntu-24.04"
+    runs-on: "ubuntu-26.04"
     if: "github.ref_type == 'branch' || startsWith(github.ref_name, 'math/')"
 
     steps:
@@ -63,7 +63,7 @@ jobs:
 
   split_money:
     name: "Split - money"
-    runs-on: "ubuntu-24.04"
+    runs-on: "ubuntu-26.04"
     if: "github.ref_type == 'branch' || startsWith(github.ref_name, 'money/')"
 
     steps:
