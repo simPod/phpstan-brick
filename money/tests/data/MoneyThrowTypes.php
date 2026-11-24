@@ -588,9 +588,12 @@ class MoneyThrowTypes
         CurrencyConverter $converter,
         Money $money,
     ): void {
+        // Keep the sealed ExchangeRateException in a separate catch (phpstan/phpstan#15392).
         try {
             $result = $converter->convert($money, 'USD');
-        } catch (ExchangeRateException | RoundingNecessaryException) {
+        } catch (ExchangeRateException) {
+            $result = $money;
+        } catch (RoundingNecessaryException) {
             $result = $money;
         } finally {
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
@@ -625,9 +628,12 @@ class MoneyThrowTypes
         Money $money,
         string $code,
     ): void {
+        // Keep the sealed ExchangeRateException in a separate catch (phpstan/phpstan#15392).
         try {
             $result = $converter->convert($money, $code, roundingMode: RoundingMode::Down);
-        } catch (ExchangeRateException | UnknownCurrencyException) {
+        } catch (ExchangeRateException) {
+            $result = $money;
+        } catch (UnknownCurrencyException) {
             $result = $money;
         } finally {
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
