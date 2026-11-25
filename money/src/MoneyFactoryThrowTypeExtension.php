@@ -199,17 +199,18 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
         }
 
         if ($contextClass === CustomContext::class) {
-            $ctorArgs = $contextExpr->getArgs();
+            foreach ($contextExpr->getArgs() as $index => $arg) {
+                if ($arg->unpack) {
+                    return false;
+                }
 
-            // new CustomContext($scale) — step defaults to 1.
-            if (count($ctorArgs) < 2) {
-                return true;
+                $isStep = $arg->name === null ? $index === 1 : $arg->name->toString() === 'step';
+                if ($isStep) {
+                    return $arg->value instanceof Int_ && $arg->value->value === 1;
+                }
             }
 
-            // new CustomContext($scale, 1) — explicit step = 1.
-            $stepType = $ctorArgs[1]->value;
-
-            return $stepType instanceof Int_ && $stepType->value === 1;
+            return true;
         }
 
         return false;
