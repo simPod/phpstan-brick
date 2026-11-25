@@ -9,8 +9,8 @@ use Brick\Math\BigInteger;
 use Brick\Math\BigNumber;
 use Brick\Math\BigRational;
 use Brick\Math\Exception\DivisionByZeroException;
+use Brick\Math\Exception\IntegerOverflowException;
 use Brick\Math\Exception\InvalidArgumentException;
-use Brick\Math\Exception\MathException;
 use Brick\Math\Exception\NegativeNumberException;
 use Brick\Math\Exception\RoundingNecessaryException;
 use Brick\Math\RoundingMode;
@@ -25,34 +25,15 @@ use PHPStan\Type\IntegerType;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
 use PHPStan\Type\TypeCombinator;
-use Throwable;
 
 /**
  * Narrows the throw type of methods with a {@see RoundingMode} parameter.
  *
- * When the rounding mode is known to not be {@see RoundingMode::Unnecessary},
- * {@see RoundingNecessaryException} cannot occur.
- * Each method retains only its inherent exceptions
- * (e.g. {@see DivisionByZeroException}, {@see NegativeNumberException}).
- *
- * For toScale(), {@see InvalidArgumentException} is also removed when the scale is non-negative.
+ * The rounding mode controls rounding of the result, not errors from converting
+ * an operand, validating the scale, or performing scale arithmetic.
  */
 final class RoundingModeThrowTypeExtension implements DynamicMethodThrowTypeExtension
 {
-    /**
-     * class => method => [rounding mode arg index, residual exception classes].
-     */
-    private const array METHODS = [
-        BigInteger::class => [
-            'dividedBy' => [1, [MathException::class, DivisionByZeroException::class]],
-            'sqrt' => [0, [NegativeNumberException::class]],
-        ],
-        BigDecimal::class => [
-            'dividedBy' => [2, [MathException::class, DivisionByZeroException::class]],
-            'sqrt' => [1, [NegativeNumberException::class]],
-        ],
-    ];
-
     public function isMethodSupported(MethodReflection $methodReflection): bool
     {
         $className = $methodReflection->getDeclaringClass()->getName();
@@ -65,7 +46,8 @@ final class RoundingModeThrowTypeExtension implements DynamicMethodThrowTypeExte
                 || $className === BigRational::class;
         }
 
-        return isset(self::METHODS[$className][$methodName]);
+        return ($className === BigInteger::class || $className === BigDecimal::class)
+            && ($methodName === 'dividedBy' || $methodName === 'sqrt');
     }
 
     public function getThrowTypeFromMethodCall(
@@ -73,28 +55,47 @@ final class RoundingModeThrowTypeExtension implements DynamicMethodThrowTypeExte
         MethodCall $methodCall,
         Scope $scope,
     ): Type|null {
+        // PHPStan normalizes named arguments for this call. An unpacked argument
+        // can still supply several parameters and is not evidence for narrowing.
+        $argTypes = [];
+        foreach ($methodCall->getArgs() as $arg) {
+            if ($arg->unpack) {
+                $argTypes = [];
+
+                break;
+            }
+
+            $argTypes[] = $scope->getType($arg->value);
+        }
+
         $methodName = $methodReflection->getName();
-
         if ($methodName === 'toScale') {
-            return $this->narrowToScale($methodCall, $scope, $methodReflection);
+            return self::narrowToScale($argTypes[0] ?? null, $argTypes[1] ?? null);
         }
 
-        $className = $methodReflection->getDeclaringClass()->getName();
-        $config = self::METHODS[$className][$methodName] ?? null;
+        $isDecimal = $methodReflection->getDeclaringClass()->getName() === BigDecimal::class;
+        $scaleType = $isDecimal ? ($argTypes[$methodName === 'sqrt' ? 0 : 1] ?? null) : null;
 
-        if ($config === null) {
-            return $methodReflection->getThrowType();
+        // Decimal division and square root validate the scale before doing any work.
+        if ($scaleType !== null && IntegerRangeType::fromInterval(null, -1)->isSuperTypeOf($scaleType)->yes()) {
+            return new ObjectType(InvalidArgumentException::class);
         }
 
-        [$roundingModeArgIndex, $residualExceptions] = $config;
-
-        return $this->narrowByRoundingMode(
-            $methodCall,
-            $scope,
-            $methodReflection,
-            $roundingModeArgIndex,
-            $residualExceptions,
-        );
+        return match ($methodName) {
+            'sqrt' => self::narrowSqrt(
+                $isDecimal,
+                $scaleType,
+                $argTypes[$isDecimal ? 1 : 0] ?? null,
+            ),
+            'dividedBy' => self::narrowDivision(
+                $methodReflection,
+                $isDecimal,
+                $argTypes[0] ?? null,
+                $scaleType,
+                $argTypes[$isDecimal ? 2 : 1] ?? null,
+            ),
+            default => $methodReflection->getThrowType(),
+        };
     }
 
     /**
@@ -102,125 +103,103 @@ final class RoundingModeThrowTypeExtension implements DynamicMethodThrowTypeExte
      * - scale is non-negative → removes {@see InvalidArgumentException}
      * - rounding mode is not Unnecessary → removes {@see RoundingNecessaryException}
      */
-    private function narrowToScale(
-        MethodCall $methodCall,
-        Scope $scope,
-        MethodReflection $methodReflection,
-    ): Type|null {
-        $args = $methodCall->getArgs();
-
-        $scaleIsNonNegative = isset($args[0])
-            && IntegerRangeType::fromInterval(0, null)->isSuperTypeOf($scope->getType($args[0]->value))->yes();
-
-        $roundingIsNotUnnecessary = isset($args[1])
-            && self::isNotUnnecessary($scope->getType($args[1]->value));
-
-        if ($scaleIsNonNegative && $roundingIsNotUnnecessary) {
-            return null;
-        }
-
+    private static function narrowToScale(Type|null $scaleType, Type|null $roundingModeType): Type|null
+    {
         $residual = [];
 
-        if (! $scaleIsNonNegative) {
+        if (! self::isNonNegativeScale($scaleType)) {
             $residual[] = new ObjectType(InvalidArgumentException::class);
         }
 
-        if (! $roundingIsNotUnnecessary) {
+        if (! self::permitsRounding($roundingModeType)) {
+            $residual[] = new ObjectType(RoundingNecessaryException::class);
+        }
+
+        return $residual === [] ? null : TypeCombinator::union(...$residual);
+    }
+
+    private static function narrowSqrt(bool $isDecimal, Type|null $scaleType, Type|null $roundingModeType): Type
+    {
+        $residual = [new ObjectType(NegativeNumberException::class)];
+
+        if ($isDecimal) {
+            if (! self::isNonNegativeScale($scaleType)) {
+                $residual[] = new ObjectType(InvalidArgumentException::class);
+            }
+
+            // The intermediate scale depends on both the requested and input scale.
+            $residual[] = new ObjectType(IntegerOverflowException::class);
+        }
+
+        if (! self::permitsRounding($roundingModeType)) {
             $residual[] = new ObjectType(RoundingNecessaryException::class);
         }
 
         return TypeCombinator::union(...$residual);
     }
 
-    /** @param list<class-string<Throwable>> $residualExceptions */
-    private function narrowByRoundingMode(
-        MethodCall $methodCall,
-        Scope $scope,
+    private static function narrowDivision(
         MethodReflection $methodReflection,
-        int $roundingModeArgIndex,
-        array $residualExceptions,
+        bool $isDecimal,
+        Type|null $divisorType,
+        Type|null $scaleType,
+        Type|null $roundingModeType,
     ): Type|null {
-        $args = $methodCall->getArgs();
+        $integerOperandType = TypeCombinator::union(new IntegerType(), new ObjectType(BigInteger::class));
+        $losslessOperandType = $isDecimal
+            ? TypeCombinator::union($integerOperandType, new ObjectType(BigDecimal::class))
+            : $integerOperandType;
 
-        $roundingIsNotUnnecessary = isset($args[$roundingModeArgIndex])
-            && self::isNotUnnecessary($scope->getType($args[$roundingModeArgIndex]->value));
-
-        // For dividedBy(), MathException is only thrown when parsing the divisor argument.
-        // When the divisor is already the right type (or int), MathException is impossible.
-        $argType = isset($args[0]) ? $scope->getType($args[0]->value) : null;
-        $argIsSafe = $argType !== null && $this->isDivisorArgSafe($methodReflection, $argType);
-
-        // DivisionByZeroException is impossible when the divisor is a non-zero int.
-        $divisorIsNonZero = $argType !== null && self::isNonZero($argType);
-
-        if (! $roundingIsNotUnnecessary && ! $argIsSafe && ! $divisorIsNonZero) {
+        if ($divisorType === null || ! $losslessOperandType->isSuperTypeOf($divisorType)->yes()) {
             return $methodReflection->getThrowType();
         }
 
-        $types = [];
+        $residual = [];
+        $zero = new ConstantIntegerType(0);
 
-        foreach ($residualExceptions as $exceptionClass) {
-            if ($argIsSafe && $exceptionClass === MathException::class) {
-                continue;
-            }
-
-            if ($roundingIsNotUnnecessary && $exceptionClass === RoundingNecessaryException::class) {
-                continue;
-            }
-
-            if ($divisorIsNonZero && $exceptionClass === DivisionByZeroException::class) {
-                continue;
-            }
-
-            $types[] = new ObjectType($exceptionClass);
+        if ($isDecimal && ! self::isNonNegativeScale($scaleType)) {
+            $residual[] = new ObjectType(InvalidArgumentException::class);
         }
 
-        if ($types === []) {
-            return null;
+        if (! $divisorType->isInteger()->yes() || ! $zero->isSuperTypeOf($divisorType)->no()) {
+            $residual[] = new ObjectType(DivisionByZeroException::class);
         }
 
-        return TypeCombinator::union(...$types);
+        if ($zero->isSuperTypeOf($divisorType)->yes()) {
+            return TypeCombinator::union(...$residual);
+        }
+
+        // Integer operands have scale zero. Overflow requires adding two non-zero scales.
+        if (
+            $isDecimal
+            && ! $integerOperandType->isSuperTypeOf($divisorType)->yes()
+            && ($scaleType === null || ! $zero->isSuperTypeOf($scaleType)->yes())
+        ) {
+            $residual[] = new ObjectType(IntegerOverflowException::class);
+        }
+
+        // Integer division by 1 or -1 is exact; this does not hold at an arbitrary decimal scale.
+        if (
+            ! self::permitsRounding($roundingModeType)
+            && ($isDecimal || ! IntegerRangeType::fromInterval(-1, 1)->isSuperTypeOf($divisorType)->yes())
+        ) {
+            $residual[] = new ObjectType(RoundingNecessaryException::class);
+        }
+
+        return $residual === [] ? null : TypeCombinator::union(...$residual);
     }
 
-    /**
-     * Checks if the divisor argument is already the correct type (no parsing needed).
-     */
-    private function isDivisorArgSafe(MethodReflection $methodReflection, Type $argType): bool
+    private static function isNonNegativeScale(Type|null $scaleType): bool
     {
-        $className = $methodReflection->getDeclaringClass()->getName();
-
-        $safeType = match ($className) {
-            BigInteger::class => TypeCombinator::union(new IntegerType(), new ObjectType(BigInteger::class)),
-            BigDecimal::class => TypeCombinator::union(
-                new IntegerType(),
-                new ObjectType(BigInteger::class),
-                new ObjectType(BigDecimal::class),
-            ),
-            default => null,
-        };
-
-        return $safeType !== null && $safeType->isSuperTypeOf($argType)->yes();
+        return $scaleType !== null && IntegerRangeType::fromInterval(0, null)->isSuperTypeOf($scaleType)->yes();
     }
 
-    /**
-     * Checks if the type is guaranteed to be non-zero (excludes {@see DivisionByZeroException}).
-     *
-     * Non-zero int ranges and {@see BigNumber} instances (whose zeroness can't be statically proven) are considered non-zero.
-     * Only pure int types that include zero are treated as potentially zero.
-     */
-    private static function isNonZero(Type $type): bool
-    {
-        if (! new IntegerType()->isSuperTypeOf($type)->yes()) {
-            return false;
-        }
-
-        return new ConstantIntegerType(0)->isSuperTypeOf($type)->no();
-    }
-
-    private static function isNotUnnecessary(Type $roundingModeType): bool
+    private static function permitsRounding(Type|null $roundingModeType): bool
     {
         $unnecessaryType = new EnumCaseObjectType(RoundingMode::class, 'Unnecessary');
 
-        return $unnecessaryType->isSuperTypeOf($roundingModeType)->no();
+        return $roundingModeType !== null
+            && new ObjectType(RoundingMode::class)->isSuperTypeOf($roundingModeType)->yes()
+            && $unnecessaryType->isSuperTypeOf($roundingModeType)->no();
     }
 }

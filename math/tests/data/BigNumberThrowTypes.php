@@ -398,11 +398,11 @@ class BigNumberThrowTypes
         }
     }
 
-    public function sqrtWithSafeRoundingCatchingNegativeNumber(BigDecimal $a): void
+    public function sqrtWithSafeRoundingCatchingNegativeNumberAndOverflow(BigDecimal $a): void
     {
         try {
             $result = $a->sqrt(2, RoundingMode::Down);
-        } catch (NegativeNumberException) {
+        } catch (NegativeNumberException | IntegerOverflowException) {
             $result = BigDecimal::zero();
         } finally {
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
