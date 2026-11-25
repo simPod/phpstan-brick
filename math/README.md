@@ -1,5 +1,9 @@
 # PHPStan Brick Math
 
+[![Latest release](https://poser.pugx.org/simpod/phpstan-brick-math/v/stable)](https://packagist.org/packages/simpod/phpstan-brick-math)
+[![Total downloads](https://poser.pugx.org/simpod/phpstan-brick-math/d/total.svg)](https://packagist.org/packages/simpod/phpstan-brick-math)
+[![Monorepo Tests](https://github.com/simPod/phpstan-brick/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/simPod/phpstan-brick/actions/workflows/tests.yml)
+
 PHPStan extensions that narrow throw types for [brick/math](https://github.com/brick/math).
 
 ## Installation
