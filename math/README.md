@@ -8,6 +8,8 @@ PHPStan extensions that narrow throw types for [brick/math](https://github.com/b
 
 ## Installation
 
+This extension requires `brick/math` 1.x.
+
 ```
 composer require --dev simpod/phpstan-brick-math
 ```

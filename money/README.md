@@ -8,6 +8,8 @@ PHPStan extensions that narrow throw types for [brick/money](https://github.com/
 
 ## Installation
 
+This extension requires `brick/money` 0.15.1 or later in the 0.15 series and `brick/math` 1.x.
+
 ```
 composer require --dev simpod/phpstan-brick-money
 ```
