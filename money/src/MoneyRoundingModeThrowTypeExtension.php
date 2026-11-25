@@ -55,9 +55,13 @@ final class MoneyRoundingModeThrowTypeExtension implements DynamicMethodThrowTyp
                 return $methodReflection->getThrowType();
             }
 
-            $residual = SafeType::numberParsingExceptions($scope->getType($args[1]->value));
+            $rateType = $scope->getType($args[1]->value);
+            $residual = SafeType::numberParsingExceptions($rateType);
+
             // The rate must be positive, and a same-currency conversion requires a rate of 1.
-            $residual[] = new ObjectType(InvalidArgumentException::class);
+            if (! SafeType::isOne($rateType)) {
+                $residual[] = new ObjectType(InvalidArgumentException::class);
+            }
 
             if (! SafeType::isSafeCurrency($scope->getType($args[0]->value))) {
                 $residual[] = new ObjectType(UnknownCurrencyException::class);
@@ -69,14 +73,13 @@ final class MoneyRoundingModeThrowTypeExtension implements DynamicMethodThrowTyp
         if (! $convertedTo || ! $isRational) {
             $contextArg = $args[$convertedTo ? 2 : 0] ?? null;
             $roundingModeArg = $args[$convertedTo ? 3 : 1] ?? null;
-            $contextType = $contextArg === null ? null : $scope->getType($contextArg->value);
             $roundingModeType = $roundingModeArg === null ? null : $scope->getType($roundingModeArg->value);
 
             if (! SafeType::isSafeRoundingMode($roundingModeType)) {
                 $residual[] = new ObjectType(RoundingNecessaryException::class);
             }
 
-            if (! SafeType::isContextApplicable($contextType, $roundingModeType)) {
+            if (! SafeType::isContextApplicable($contextArg?->value, $roundingModeType, $scope)) {
                 $residual[] = new ObjectType(ContextException::class);
             }
         }

@@ -12,7 +12,7 @@ use Brick\Money\Exception\ContextException;
 use Brick\Money\Exception\UnknownCurrencyException;
 use Brick\Money\Money;
 use Brick\Money\RationalMoney;
-use PhpParser\Node\Arg;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Name;
@@ -84,14 +84,14 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
         }
 
         if ($className === Money::class) {
-            $contextType = isset($args[2]) ? $scope->getType($args[2]->value) : null;
+            $context = ($args[2] ?? null)?->value;
             $roundingModeType = isset($args[3]) ? $scope->getType($args[3]->value) : null;
 
-            if (! $this->isRoundingSafe($amountType, $methodName, $args, $roundingModeType)) {
+            if (! $this->isRoundingSafe($amountType, $methodName, $context, $roundingModeType, $scope)) {
                 $residualTypes[] = new ObjectType(RoundingNecessaryException::class);
             }
 
-            if (! SafeType::isContextApplicable($contextType, $roundingModeType)) {
+            if (! SafeType::isContextApplicable($context, $roundingModeType, $scope)) {
                 $residualTypes[] = new ObjectType(ContextException::class);
             }
         }
@@ -109,16 +109,15 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
      * - Zero amount: zero at any scale is still zero.
      * - Money::of() with int amount and a context that only scales (no step division):
      *   scaling an integer to higher precision just adds trailing zeros.
-     * - Money::ofMinor() with int amount and default context:
+     * - Money::ofMinor() with int amount and default scale without step division:
      *   minor int divided by 10^fractionDigits then scaled back to fractionDigits is always exact.
-     *
-     * @param Arg[] $args
      */
     private function isRoundingSafe(
         Type $amountType,
         string $methodName,
-        array $args,
+        Expr|null $context,
         Type|null $roundingModeType,
+        Scope $scope,
     ): bool {
         if (SafeType::isSafeRoundingMode($roundingModeType)) {
             return true;
@@ -132,51 +131,38 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
             return false;
         }
 
-        // For Money::of() with int amount, check if the context is safe (no step division).
-        if ($methodName === 'of') {
-            return $this->isContextSafeForInteger($args);
-        }
-
-        // For Money::ofMinor() with int amount, default context is always safe:
-        // int / 10^fractionDigits scaled to fractionDigits is exact.
-        if ($methodName === 'ofMinor') {
-            return ! isset($args[2]) || $this->isDefaultContext($args[2]);
-        }
-
-        return false;
-    }
-
-    /**
-     * Checks if the context argument (arg index 2) is safe for integer amounts.
-     *
-     * Safe contexts are those that only perform toScale() without dividing by a step:
-     * - No context arg (default {@see DefaultContext})
-     * - {@see DefaultContext}
-     * - {@see AutoContext}
-     * - {@see CustomContext} with step = 1 (default or explicit)
-     *
-     * @param Arg[] $args
-     */
-    private function isContextSafeForInteger(array $args): bool
-    {
-        if (! isset($args[2])) {
+        if (
+            $context === null
+            || new ObjectType(DefaultContext::class)->isSuperTypeOf($scope->getType($context))->yes()
+            || SafeType::isUnitCashContext($context, $scope)
+        ) {
             return true;
         }
 
-        $contextExpr = $args[2]->value;
+        return $methodName === 'of' && $this->isContextSafeForInteger($context);
+    }
 
-        if (! $contextExpr instanceof New_ || ! $contextExpr->class instanceof Name) {
+    /**
+     * Checks other contexts that only scale a whole-unit integer without dividing by a step.
+     *
+     * Safe contexts are those that only perform toScale() without dividing by a step:
+     * - {@see AutoContext}
+     * - {@see CustomContext} with step = 1 (default or explicit)
+     */
+    private function isContextSafeForInteger(Expr $context): bool
+    {
+        if (! $context instanceof New_ || ! $context->class instanceof Name) {
             return false;
         }
 
-        $contextClass = $contextExpr->class->toString();
+        $contextClass = $context->class->toString();
 
-        if ($contextClass === DefaultContext::class || $contextClass === AutoContext::class) {
+        if ($contextClass === AutoContext::class) {
             return true;
         }
 
         if ($contextClass === CustomContext::class) {
-            foreach ($contextExpr->getArgs() as $index => $arg) {
+            foreach ($context->getArgs() as $index => $arg) {
                 if ($arg->unpack) {
                     return false;
                 }
@@ -191,15 +177,6 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
         }
 
         return false;
-    }
-
-    private function isDefaultContext(Arg $arg): bool
-    {
-        $expr = $arg->value;
-
-        return $expr instanceof New_
-            && $expr->class instanceof Name
-            && $expr->class->toString() === DefaultContext::class;
     }
 
     private function narrowZero(
@@ -223,7 +200,7 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
 
         if (
             $methodReflection->getDeclaringClass()->getName() === Money::class
-            && ! SafeType::isContextApplicable(isset($args[1]) ? $scope->getType($args[1]->value) : null, null)
+            && ! SafeType::isContextApplicable(($args[1] ?? null)?->value, null, $scope)
         ) {
             $residualTypes[] = new ObjectType(ContextException::class);
         }
