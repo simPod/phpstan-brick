@@ -9,13 +9,17 @@ use Brick\Math\BigInteger;
 use Brick\Math\BigNumber;
 use Brick\Math\BigRational;
 use Brick\Math\Exception\DivisionByZeroException;
+use Brick\Math\Exception\IntegerOverflowException;
 use Brick\Math\Exception\InvalidArgumentException;
 use Brick\Math\Exception\RandomSourceException;
+use Brick\Math\Exception\RoundingNecessaryException;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Name;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\MethodReflection;
 use PHPStan\Type\Accessory\AccessoryNumericStringType;
 use PHPStan\Type\Constant\ConstantIntegerType;
+use PHPStan\Type\Constant\ConstantStringType;
 use PHPStan\Type\DynamicStaticMethodThrowTypeExtension;
 use PHPStan\Type\IntegerType;
 use PHPStan\Type\ObjectType;
@@ -25,6 +29,8 @@ use PHPStan\Type\TypeCombinator;
 use function count;
 use function in_array;
 
+use const PHP_INT_MIN;
+
 /**
  * Narrows the throw type of {@see BigNumber} static factory methods.
  *
@@ -33,8 +39,10 @@ use function in_array;
  */
 final class BigNumberOfThrowTypeExtension implements DynamicStaticMethodThrowTypeExtension
 {
+    private const array InheritedFactories = ['of', 'ofNullable', 'min', 'max', 'sum'];
+
     private const array SupportedMethods = [
-        BigNumber::class => ['of', 'ofNullable', 'min', 'max', 'sum'],
+        BigNumber::class => self::InheritedFactories,
         BigInteger::class => ['of', 'ofNullable', 'gcdAll', 'lcmAll', 'randomRange'],
         BigDecimal::class => ['of', 'ofNullable', 'ofUnscaledValue'],
         BigRational::class => ['of', 'ofNullable', 'ofFraction'],
@@ -58,7 +66,6 @@ final class BigNumberOfThrowTypeExtension implements DynamicStaticMethodThrowTyp
             return $methodReflection->getThrowType();
         }
 
-        $calledOnClass = $methodReflection->getDeclaringClass()->getName();
         $methodName = $methodReflection->getName();
 
         // Methods with residual exceptions after parsing is eliminated.
@@ -70,36 +77,113 @@ final class BigNumberOfThrowTypeExtension implements DynamicStaticMethodThrowTyp
             return $this->narrowRandomRange($methodCall, $scope, $methodReflection);
         }
 
-        $noThrowType = self::getNoThrowType($calledOnClass);
+        if ($methodName === 'ofUnscaledValue') {
+            return $this->narrowOfUnscaledValue($methodCall, $scope, $methodReflection);
+        }
+
+        $isInheritedFactory = in_array($methodName, self::InheritedFactories, true);
+        $calledOnClass = $isInheritedFactory
+            ? self::getCalledOnClass($methodCall, $scope)
+            : $methodReflection->getDeclaringClass()->getName();
+        $noThrowType = $calledOnClass === null ? null : self::getNoThrowType($calledOnClass);
 
         if ($noThrowType === null) {
             return $methodReflection->getThrowType();
         }
 
+        $numberType = self::getBuiltInNumberInputType();
+        if ($methodName === 'ofNullable') {
+            $noThrowType = TypeCombinator::addNull($noThrowType);
+            $numberType = TypeCombinator::addNull($numberType);
+        }
+
         // Check ALL arguments (including variadic) match the required type.
-        $allMatch = true;
+        $mayRound = false;
 
         foreach ($methodCall->getArgs() as $arg) {
+            if ($arg->unpack) {
+                return $methodReflection->getThrowType();
+            }
+
             $argType = $scope->getType($arg->value);
 
-            if (! $noThrowType->isSuperTypeOf($argType)->yes()) {
-                $allMatch = false;
+            if ($noThrowType->isSuperTypeOf($argType)->yes()) {
+                continue;
+            }
 
-                break;
+            if ($isInheritedFactory && $numberType->isSuperTypeOf($argType)->yes()) {
+                $mayRound = true;
+
+                continue;
+            }
+
+            if ($methodName === 'of' || $methodName === 'ofNullable') {
+                return $this->narrowNonRationalInput($methodCall, $scope, $methodReflection);
+            }
+
+            return $methodReflection->getThrowType();
+        }
+
+        return $mayRound ? new ObjectType(RoundingNecessaryException::class) : null;
+    }
+
+    private static function getCalledOnClass(StaticCall $methodCall, Scope $scope): string|null
+    {
+        // Inherited factories convert to the called class, not to BigNumber.
+        $class = $methodCall->class;
+        if ($class instanceof Name) {
+            return $class->isSpecialClassName()
+                ? null
+                : new ObjectType($scope->resolveName($class))->getClassReflection()?->getName();
+        }
+
+        $classType = $scope->getType($class);
+        if (new ConstantStringType(BigNumber::class)->isSuperTypeOf($classType)->yes()) {
+            return BigNumber::class;
+        }
+
+        $objectType = $classType->isClassString()->yes() ? $classType->getClassStringObjectType() : $classType;
+        foreach ([BigInteger::class, BigDecimal::class, BigRational::class] as $finalClass) {
+            if (new ObjectType($finalClass)->isSuperTypeOf($objectType)->yes()) {
+                return $finalClass;
             }
         }
 
-        if ($allMatch) {
-            return null;
+        return null;
+    }
+
+    private function narrowOfUnscaledValue(
+        StaticCall $methodCall,
+        Scope $scope,
+        MethodReflection $methodReflection,
+    ): Type|null {
+        // Arguments are normalized by PHPStan, including named calls.
+        $args = $methodCall->getArgs();
+        if (! isset($args[0]) || $args[0]->unpack || (isset($args[1]) && $args[1]->unpack)) {
+            return $methodReflection->getThrowType();
         }
 
-        // int and numeric-string arguments cannot contain "/", so DivisionByZeroException is impossible.
-        // This applies to of() and ofNullable() on all classes.
-        if (in_array($methodName, ['of', 'ofNullable'], true)) {
-            return $this->narrowNonRationalInput($methodCall, $scope, $methodReflection);
+        $valueType = $scope->getType($args[0]->value);
+        if (! self::getBuiltInNumberInputType()->isSuperTypeOf($valueType)->yes()) {
+            return $methodReflection->getThrowType();
         }
 
-        return $methodReflection->getThrowType();
+        $residual = [];
+        // The unscaled value is converted to BigInteger, not BigDecimal.
+        $integerInputType = TypeCombinator::union(new IntegerType(), new ObjectType(BigInteger::class));
+        if (! $integerInputType->isSuperTypeOf($valueType)->yes()) {
+            $residual[] = new ObjectType(RoundingNecessaryException::class);
+        }
+
+        if (
+            isset($args[1])
+            && ! new ConstantIntegerType(PHP_INT_MIN)->isSuperTypeOf($scope->getType($args[1]->value))->no()
+            && ! new ConstantIntegerType(0)->isSuperTypeOf($valueType)->yes()
+        ) {
+            $residual[] = new ObjectType(IntegerOverflowException::class);
+        }
+
+        return $residual === [] ? null : TypeCombinator::union(...$residual);
     }
 
     private function narrowOfFraction(
@@ -191,16 +275,6 @@ final class BigNumberOfThrowTypeExtension implements DynamicStaticMethodThrowTyp
         return TypeCombinator::remove($defaultThrowType, new ObjectType(DivisionByZeroException::class));
     }
 
-    /**
-     * Returns the argument type for which the method cannot throw.
-     *
-     * int arguments are always safe: _of(int) produces a {@see BigInteger} which converts losslessly to all subtypes.
-     *
-     * - {@see BigNumber}::of/min/max/sum(int|{@see BigNumber}) — no parsing, returned as-is.
-     * - {@see BigInteger}::of/gcdAll/lcmAll(int|{@see BigInteger}) — no parsing, no conversion.
-     * - {@see BigDecimal}::of/ofUnscaledValue(int|{@see BigInteger}|{@see BigDecimal}) — BigInteger converts losslessly to BigDecimal.
-     * - {@see BigRational}::of(int|{@see BigNumber}) — all BigNumber types convert losslessly to BigRational.
-     */
     private static function isNonZero(Type $type): bool
     {
         if (! new IntegerType()->isSuperTypeOf($type)->yes()) {
@@ -208,6 +282,16 @@ final class BigNumberOfThrowTypeExtension implements DynamicStaticMethodThrowTyp
         }
 
         return new ConstantIntegerType(0)->isSuperTypeOf($type)->no();
+    }
+
+    private static function getBuiltInNumberInputType(): Type
+    {
+        return TypeCombinator::union(
+            new IntegerType(),
+            new ObjectType(BigInteger::class),
+            new ObjectType(BigDecimal::class),
+            new ObjectType(BigRational::class),
+        );
     }
 
     private static function getNoThrowType(string $calledOnClass): Type|null

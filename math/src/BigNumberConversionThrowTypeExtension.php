@@ -9,7 +9,6 @@ use Brick\Math\BigInteger;
 use Brick\Math\BigNumber;
 use Brick\Math\BigRational;
 use Brick\Math\Exception\IntegerOverflowException;
-use Brick\Math\RoundingMode;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Identifier;
@@ -17,18 +16,17 @@ use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\MethodReflection;
 use PHPStan\Type\Constant\ConstantIntegerType;
 use PHPStan\Type\DynamicMethodThrowTypeExtension;
-use PHPStan\Type\Enum\EnumCaseObjectType;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
+use PHPStan\Type\TypeCombinator;
 
 /**
  * Narrows the throw type of toBigInteger(), toBigDecimal(), toBigRational(), and toInt().
  *
  * When the caller is already the target type, toBigInteger/toBigDecimal/toBigRational are no-ops and cannot throw.
  * When toInt() is called on {@see BigInteger}, only {@see IntegerOverflowException} can be thrown
- * (no {@see RoundingNecessaryException}).
- * When toBigInteger() is called on the result of toScale(0, $roundingMode) where $roundingMode is not Unnecessary,
- * the conversion cannot throw because the scale is guaranteed to be 0.
+ * (no rounding is needed).
+ * A successful Brick Math toScale(0) call produces an integral decimal, regardless of its rounding mode.
  */
 final class BigNumberConversionThrowTypeExtension implements DynamicMethodThrowTypeExtension
 {
@@ -75,48 +73,45 @@ final class BigNumberConversionThrowTypeExtension implements DynamicMethodThrowT
             return null;
         }
 
-        if ($methodName === 'toBigInteger' && $this->isToScaleWithZeroScale($methodCall->var, $scope)) {
+        if ($methodName === 'toBigInteger' && self::isToScaleWithZeroScale($methodCall->var, $scope)) {
             return null;
         }
 
         return $methodReflection->getThrowType();
     }
 
-    /**
-     * Checks if the expression is a toScale(0, $roundingMode) call where $roundingMode is not Unnecessary.
-     *
-     * After toScale(0, $roundingMode), the BigDecimal is guaranteed to have scale 0,
-     * so toBigInteger() cannot throw {@see \Brick\Math\Exception\RoundingNecessaryException}.
-     */
-    private function isToScaleWithZeroScale(Expr $expr, Scope $scope): bool
+    private static function isToScaleWithZeroScale(Expr $expr, Scope $scope): bool
     {
         if (! $expr instanceof MethodCall) {
             return false;
         }
 
-        if (! $expr->name instanceof Identifier || $expr->name->name !== 'toScale') {
+        if (! $expr->name instanceof Identifier || $expr->name->toLowerString() !== 'toscale') {
             return false;
         }
 
-        $args = $expr->getArgs();
-
-        if (! isset($args[0])) {
+        // Only the three final Brick implementations guarantee the result's scale.
+        $brickNumber = TypeCombinator::union(
+            new ObjectType(BigInteger::class),
+            new ObjectType(BigDecimal::class),
+            new ObjectType(BigRational::class),
+        );
+        if (! $brickNumber->isSuperTypeOf($scope->getType($expr->var))->yes()) {
             return false;
         }
 
-        $scaleType = $scope->getType($args[0]->value);
+        // This is the inner call, whose arguments PHPStan has not normalized for us.
+        $scale = null;
+        foreach ($expr->getArgs() as $position => $arg) {
+            if ($arg->unpack) {
+                return false;
+            }
 
-        if (! new ConstantIntegerType(0)->isSuperTypeOf($scaleType)->yes()) {
-            return false;
+            if ($arg->name !== null ? $arg->name->name === 'scale' : $position === 0) {
+                $scale = $arg;
+            }
         }
 
-        if (! isset($args[1])) {
-            return false;
-        }
-
-        $roundingModeType = $scope->getType($args[1]->value);
-        $unnecessaryType = new EnumCaseObjectType(RoundingMode::class, 'Unnecessary');
-
-        return $unnecessaryType->isSuperTypeOf($roundingModeType)->no();
+        return $scale !== null && new ConstantIntegerType(0)->isSuperTypeOf($scope->getType($scale->value))->yes();
     }
 }

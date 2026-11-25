@@ -9,6 +9,7 @@ use Brick\Math\BigInteger;
 use Brick\Math\BigNumber;
 use Brick\Math\BigRational;
 use Brick\Math\Exception\DivisionByZeroException;
+use Brick\Math\Exception\IntegerOverflowException;
 use Brick\Math\Exception\InvalidArgumentException;
 use Brick\Math\Exception\NoInverseException;
 use Brick\Math\Exception\RoundingNecessaryException;
@@ -54,7 +55,6 @@ final class BigNumberOperationThrowTypeExtension implements DynamicMethodThrowTy
         BigDecimal::class => [
             'plus',
             'minus',
-            'multipliedBy',
         ],
         BigRational::class => [
             'plus',
@@ -94,10 +94,15 @@ final class BigNumberOperationThrowTypeExtension implements DynamicMethodThrowTy
             'modPow' => [DivisionByZeroException::class, InvalidArgumentException::class],
         ],
         BigDecimal::class => [
+            'multipliedBy' => [IntegerOverflowException::class],
             'quotient' => [DivisionByZeroException::class],
             'remainder' => [DivisionByZeroException::class],
             'quotientAndRemainder' => [DivisionByZeroException::class],
-            'dividedByExact' => [DivisionByZeroException::class, RoundingNecessaryException::class],
+            'dividedByExact' => [
+                DivisionByZeroException::class,
+                RoundingNecessaryException::class,
+                IntegerOverflowException::class,
+            ],
         ],
         BigRational::class => [
             'dividedBy' => [DivisionByZeroException::class],
@@ -205,31 +210,43 @@ final class BigNumberOperationThrowTypeExtension implements DynamicMethodThrowTy
             return $this->narrowClamp($methodCall, $scope, $methodReflection);
         }
 
-        $argType = $scope->getType($methodCall->getArgs()[0]->value);
+        $args = $methodCall->getArgs();
+        $argType = $scope->getType($args[0]->value);
         $requiredType = self::getRequiredArgType($className);
 
-        if ($requiredType === null || ! $requiredType->isSuperTypeOf($argType)->yes()) {
+        if ($args[0]->unpack || $requiredType === null || ! $requiredType->isSuperTypeOf($argType)->yes()) {
             return $methodReflection->getThrowType();
         }
 
-        // modPow has two BigNumber|int|string args.
-        if ($methodName === 'modPow' && isset($methodCall->getArgs()[1])) {
-            $arg2Type = $scope->getType($methodCall->getArgs()[1]->value);
+        // PHPStan gives us arguments in parameter order, even for named calls.
+        // modPow() can accept a zero exponent; it divides by the modulus.
+        $divisorType = $argType;
+        if ($methodName === 'modPow') {
+            if (! isset($args[1]) || $args[1]->unpack) {
+                return $methodReflection->getThrowType();
+            }
 
-            if (! $requiredType->isSuperTypeOf($arg2Type)->yes()) {
+            $divisorType = $scope->getType($args[1]->value);
+            if (! $requiredType->isSuperTypeOf($divisorType)->yes()) {
                 return $methodReflection->getThrowType();
             }
         }
 
         $residual = self::ResidualThrowMethods[$className][$methodName];
 
-        // DivisionByZeroException is impossible when the divisor is guaranteed non-zero.
-        if (self::isNonZero($argType)) {
-            $residual = array_values(array_filter(
-                $residual,
-                static fn (string $e): bool => $e !== DivisionByZeroException::class,
-            ));
-        }
+        $divisorIsNonZero = self::isNonZero($divisorType);
+        // Decimal multiplication and exact division cannot overflow their scale
+        // addition when the other operand converts to a scale-zero decimal.
+        $operandHasZeroScale = TypeCombinator::union(new IntegerType(), new ObjectType(BigInteger::class))
+            ->isSuperTypeOf($argType)->yes();
+        $residual = array_values(array_filter(
+            $residual,
+            static fn (string $e): bool => match ($e) {
+                DivisionByZeroException::class => ! $divisorIsNonZero,
+                IntegerOverflowException::class => ! $operandHasZeroScale,
+                default => true,
+            },
+        ));
 
         if ($residual === []) {
             return null;
