@@ -4,7 +4,7 @@
     "license": "MIT",
     "type": "phpstan-extension",
     "require": {
-        "php": "^8.4",
+        "php": "^8.5",
         "brick/math": "^0.20 || ^1.0",
         "phpstan/phpstan": "^2.1"
     },
