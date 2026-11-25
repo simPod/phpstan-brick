@@ -5,7 +5,8 @@
     "type": "phpstan-extension",
     "require": {
         "php": "^8.5",
-        "brick/money": "^0.14 || ^0.15",
+        "brick/math": "^1.0",
+        "brick/money": "^0.15.1",
         "phpstan/phpstan": "^2.1"
     },
     "require-dev": {
