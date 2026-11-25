@@ -1,5 +1,9 @@
 # PHPStan Brick Money
 
+[![Latest release](https://poser.pugx.org/simpod/phpstan-brick-money/v/stable)](https://packagist.org/packages/simpod/phpstan-brick-money)
+[![Total downloads](https://poser.pugx.org/simpod/phpstan-brick-money/d/total.svg)](https://packagist.org/packages/simpod/phpstan-brick-money)
+[![Monorepo Tests](https://github.com/simPod/phpstan-brick/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/simPod/phpstan-brick/actions/workflows/tests.yml)
+
 PHPStan extensions that narrow throw types for [brick/money](https://github.com/brick/money).
 
 ## Installation
