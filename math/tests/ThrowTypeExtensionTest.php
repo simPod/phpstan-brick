@@ -12,8 +12,10 @@ class ThrowTypeExtensionTest extends TypeInferenceTestCase
     /** @return iterable<mixed> */
     public static function dataFileAsserts(): iterable
     {
-        yield from self::gatherAssertTypes(__DIR__ . '/data/BigNumberThrowTypes.php');
-        yield from self::gatherAssertTypes(__DIR__ . '/data/MissedExceptions.php');
+        yield from self::gatherAssertTypes(__DIR__ . '/data/FactoryThrowTypes.php');
+        yield from self::gatherAssertTypes(__DIR__ . '/data/ConversionThrowTypes.php');
+        yield from self::gatherAssertTypes(__DIR__ . '/data/OperationThrowTypes.php');
+        yield from self::gatherAssertTypes(__DIR__ . '/data/RoundingThrowTypes.php');
     }
 
     #[DataProvider('dataFileAsserts')]
