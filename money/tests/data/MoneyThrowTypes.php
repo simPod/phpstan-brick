@@ -10,9 +10,12 @@ use Brick\Math\Exception\DivisionByZeroException;
 use Brick\Math\Exception\NumberFormatException;
 use Brick\Math\Exception\RoundingNecessaryException;
 use Brick\Math\RoundingMode;
+use Brick\Money\Context\AutoContext;
+use Brick\Money\Context\CashContext;
 use Brick\Money\Context\CustomContext;
 use Brick\Money\Currency;
 use Brick\Money\CurrencyConverter;
+use Brick\Money\Exception\ContextException;
 use Brick\Money\Exception\ContextMismatchException;
 use Brick\Money\Exception\CurrencyMismatchException;
 use Brick\Money\Exception\ExchangeRateException;
@@ -105,6 +108,17 @@ class MoneyThrowTypes
             $result = Money::zero('EUR');
         } finally {
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function zeroWithIncompatibleCashContext(): void
+    {
+        $context = new CashContext(3);
+
+        try {
+            $result = Money::zero('USD', $context);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
     }
 
@@ -258,6 +272,24 @@ class MoneyThrowTypes
         }
     }
 
+    public function ofWithAutoContextAndRoundingMode(): void
+    {
+        try {
+            $result = Money::of(1, 'USD', new AutoContext(), RoundingMode::Down);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function ofWithAutoContextAndDefaultRoundingMode(): void
+    {
+        try {
+            $result = Money::of(1, 'USD', new AutoContext());
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
     public function ofDecimalWithoutRoundingModeCatchingNumberAndCurrencyExceptions(BigDecimal $amount): void
     {
         try {
@@ -275,6 +307,17 @@ class MoneyThrowTypes
             $result = Money::ofMinor($amount, 'USD', roundingMode: RoundingMode::HalfUp);
         } finally {
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofMinorWithAutoContextAndRoundingMode(): void
+    {
+        try {
+            Money::ofMinor(1, 'USD', roundingMode: RoundingMode::Down, context: new AutoContext());
+        } catch (ContextException) {
+            $caught = true;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $caught);
         }
     }
 
