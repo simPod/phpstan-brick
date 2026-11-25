@@ -5,63 +5,105 @@ declare(strict_types=1);
 namespace Brick\Money\PHPStan;
 
 use Brick\Math\BigNumber;
+use Brick\Math\Exception\NumberFormatException;
 use Brick\Math\RoundingMode;
+use Brick\Money\AbstractMoney;
+use Brick\Money\Context\AutoContext;
+use Brick\Money\Context\CustomContext;
+use Brick\Money\Context\DefaultContext;
 use Brick\Money\Currency;
-use PHPStan\Type\Accessory\AccessoryNumericStringType;
+use PhpParser\Node\Arg;
 use PHPStan\Type\Constant\ConstantIntegerType;
 use PHPStan\Type\Enum\EnumCaseObjectType;
 use PHPStan\Type\IntegerType;
-use PHPStan\Type\IntersectionType;
 use PHPStan\Type\ObjectType;
-use PHPStan\Type\StringType;
 use PHPStan\Type\Type;
+use PHPStan\Type\TypeCombinator;
 use PHPStan\Type\UnionType;
 use ReflectionClass;
 
 use function assert;
 use function dirname;
+use function preg_match;
 
 /**
- * Helpers for checking whether argument types are safe to pass without risk of exceptions.
+ * Checks which parts of a declared throw type are possible for the given arguments.
  */
 final class SafeType
 {
-    private static Type|null $safeNumberType = null;
-
     /** @var array<string, true>|null */
     private static array|null $knownCurrencies = null;
 
     /**
-     * Returns whether the given type can be safely passed to {@see BigNumber::of()} without risk of parsing exceptions.
+     * PHPStan normally binds named arguments before invoking the extension. An unpacked
+     * argument can occupy multiple parameter slots, though, and must not be read by index.
      *
-     * Safe types: `BigNumber` (and subclasses), `int`, `numeric-string`.
+     * @param Arg[] $args
      */
-    public static function isSafeNumber(Type $type): bool
+    public static function hasUnboundArguments(array $args): bool
     {
-        return self::getSafeNumberType()->isSuperTypeOf($type)->yes();
+        foreach ($args as $arg) {
+            if ($arg->unpack || $arg->name !== null) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
-     * Returns whether the given type is a known currency that cannot throw {@see UnknownCurrencyException}.
+     * `numeric-string` is broader than Brick's grammar (e.g. whitespace and oversized exponents).
+     * Only plain integer/decimal literals are known safe without evaluating the input.
      *
-     * This is true when the type is a {@see Currency} instance, or a constant string matching a known ISO currency code.
+     * @return list<Type>
+     */
+    public static function numberParsingExceptions(Type $type, bool $acceptsMoney = false): array
+    {
+        $safeTypes = [new ObjectType(BigNumber::class), new IntegerType()];
+
+        if ($acceptsMoney) {
+            $safeTypes[] = new ObjectType(AbstractMoney::class);
+        }
+
+        $safeType = TypeCombinator::union(...$safeTypes);
+
+        foreach ($type instanceof UnionType ? $type->getTypes() : [$type] as $variant) {
+            if ($safeType->isSuperTypeOf($variant)->yes()) {
+                continue;
+            }
+
+            $value = self::constantString($variant);
+
+            if ($value === null || preg_match('~\A[+-]?(?:[0-9]++(?:\.[0-9]*+)?|\.[0-9]++)\z~', $value) !== 1) {
+                return [new ObjectType(NumberFormatException::class)];
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Returns whether every possible currency is a Currency instance or a known ISO currency code,
+     * so UnknownCurrencyException cannot occur.
      */
     public static function isSafeCurrency(Type $type): bool
     {
-        if (new ObjectType(Currency::class)->isSuperTypeOf($type)->yes()) {
+        $currencyType = new ObjectType(Currency::class);
+
+        if ($currencyType->isSuperTypeOf($type)->yes()) {
             return true;
-        }
-
-        $constantStrings = $type->getConstantStrings();
-
-        if ($constantStrings === []) {
-            return false;
         }
 
         $knownCurrencies = self::getKnownCurrencies();
 
-        foreach ($constantStrings as $constantString) {
-            if (! isset($knownCurrencies[$constantString->getValue()])) {
+        foreach ($type instanceof UnionType ? $type->getTypes() : [$type] as $variant) {
+            if ($currencyType->isSuperTypeOf($variant)->yes()) {
+                continue;
+            }
+
+            $code = self::constantString($variant);
+
+            if ($code === null || ! isset($knownCurrencies[$code])) {
                 return false;
             }
         }
@@ -71,24 +113,37 @@ final class SafeType
 
     /**
      * Returns whether the given rounding mode type is known to NOT be `Unnecessary`,
-     * meaning {@see RoundingNecessaryException} cannot occur.
+     * meaning RoundingNecessaryException cannot occur.
      */
-    public static function isSafeRoundingMode(Type $type): bool
+    public static function isSafeRoundingMode(Type|null $type): bool
     {
-        $unnecessaryType = new EnumCaseObjectType(RoundingMode::class, 'Unnecessary');
+        return $type !== null
+            && new EnumCaseObjectType(RoundingMode::class, 'Unnecessary')->isSuperTypeOf($type)->no();
+    }
 
-        return $unnecessaryType->isSuperTypeOf($type)->no();
+    public static function isUnnecessaryRoundingMode(Type|null $type): bool
+    {
+        return $type === null
+            || new EnumCaseObjectType(RoundingMode::class, 'Unnecessary')->isSuperTypeOf($type)->yes();
     }
 
     /**
-     * Returns whether the given type is an integer.
-     *
-     * Integer arithmetic (plus, minus, multipliedBy) on Money always produces
-     * an exact result that fits the same context, so rounding cannot occur.
+     * Checks a target context that need not have been applied to this currency before.
+     * CashContext is not generally safe: its step may be incompatible with the currency's scale.
      */
-    public static function isInteger(Type $type): bool
+    public static function isContextApplicable(Type|null $context, Type|null $roundingMode): bool
     {
-        return new IntegerType()->isSuperTypeOf($type)->yes();
+        if ($context === null) {
+            return true;
+        }
+
+        $safeContexts = [new ObjectType(DefaultContext::class), new ObjectType(CustomContext::class)];
+
+        if (self::isUnnecessaryRoundingMode($roundingMode)) {
+            $safeContexts[] = new ObjectType(AutoContext::class);
+        }
+
+        return TypeCombinator::union(...$safeContexts)->isSuperTypeOf($context)->yes();
     }
 
     /**
@@ -118,13 +173,12 @@ final class SafeType
         return $zeroType->isSuperTypeOf($type)->no();
     }
 
-    private static function getSafeNumberType(): Type
+    private static function constantString(Type $type): string|null
     {
-        return self::$safeNumberType ??= new UnionType([
-            new ObjectType(BigNumber::class),
-            new IntegerType(),
-            new IntersectionType([new StringType(), new AccessoryNumericStringType()]),
-        ]);
+        $constant = $type->getConstantStrings()[0] ?? null;
+
+        // getConstantStrings() alone does not prove the type excludes other values.
+        return $constant !== null && $constant->isSuperTypeOf($type)->yes() ? $constant->getValue() : null;
     }
 
     /** @return array<string, true> */
