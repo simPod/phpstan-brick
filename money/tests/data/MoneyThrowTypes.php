@@ -254,6 +254,25 @@ class MoneyThrowTypes
         }
     }
 
+    public function ofIntWithReorderedCustomContextArguments(): void
+    {
+        try {
+            // Keep step before scale to exercise named argument binding.
+            $result = Money::of(1, 'EUR', new CustomContext(step: 100, scale: 1));
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function ofIntWithUnpackedCustomContextArguments(): void
+    {
+        try {
+            $result = Money::of(1, 'EUR', new CustomContext(...[1, 100]));
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
     public function ofStringWithCustomContext(string $amount): void
     {
         try {
