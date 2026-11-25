@@ -23,9 +23,8 @@ use PHPStan\Type\TypeCombinator;
 /**
  * Narrows the throw type of toBigInteger(), toBigDecimal(), toBigRational(), and toInt().
  *
- * When the caller is already the target type, toBigInteger/toBigDecimal/toBigRational are no-ops and cannot throw.
- * When toInt() is called on {@see BigInteger}, only {@see IntegerOverflowException} can be thrown
- * (no rounding is needed).
+ * Conversions to the same type and from {@see BigInteger} to {@see BigDecimal} are exact.
+ * When toInt() is called on an integer or scale-zero decimal, only {@see IntegerOverflowException} can be thrown.
  * A successful Brick Math toScale(0) call produces an integral decimal, regardless of its rounding mode.
  */
 final class BigNumberConversionThrowTypeExtension implements DynamicMethodThrowTypeExtension
@@ -59,17 +58,22 @@ final class BigNumberConversionThrowTypeExtension implements DynamicMethodThrowT
         $methodName = $methodReflection->getName();
 
         if ($methodName === 'toInt') {
-            // BigInteger::toInt() can only throw IntegerOverflowException (no RoundingNecessaryException).
-            if (new ObjectType(BigInteger::class)->isSuperTypeOf($callerType)->yes()) {
+            if (
+                new ObjectType(BigInteger::class)->isSuperTypeOf($callerType)->yes()
+                || self::isToScaleWithZeroScale($methodCall->var, $scope)
+            ) {
                 return new ObjectType(IntegerOverflowException::class);
             }
 
             return $methodReflection->getThrowType();
         }
 
-        $targetClass = self::MethodToClass[$methodName];
+        $exactCallerType = new ObjectType(self::MethodToClass[$methodName]);
+        if ($methodName === 'toBigDecimal') {
+            $exactCallerType = TypeCombinator::union($exactCallerType, new ObjectType(BigInteger::class));
+        }
 
-        if (new ObjectType($targetClass)->isSuperTypeOf($callerType)->yes()) {
+        if ($exactCallerType->isSuperTypeOf($callerType)->yes()) {
             return null;
         }
 

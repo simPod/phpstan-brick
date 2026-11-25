@@ -10,6 +10,8 @@ use Brick\Math\Exception\DivisionByZeroException;
 use Brick\Math\Exception\IntegerOverflowException;
 use Brick\Math\Exception\InvalidArgumentException;
 use Brick\Math\Exception\MathException;
+use Brick\Math\Exception\NoInverseException;
+use Brick\Math\Exception\RoundingNecessaryException;
 use PHPStan\TrinaryLogic;
 
 use function PHPStan\Testing\assertVariableCertainty;
@@ -108,6 +110,63 @@ final class OperationThrowTypes
         }
     }
 
+    public function dividedByExactWithUnitDivisor(BigDecimal $a, bool $negative): void
+    {
+        try {
+            $result = $a->dividedByExact($negative ? -1 : 1);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function dividedByExactWithNonTerminatingDivisor(BigDecimal $a): void
+    {
+        try {
+            $a->dividedByExact(3);
+        } catch (RoundingNecessaryException $rounding) {
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $rounding);
+        }
+    }
+
+    public function modWithPositiveModulus(BigInteger $a): void
+    {
+        try {
+            $result = $a->mod(3);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function modWithNegativeModulus(BigInteger $a): void
+    {
+        try {
+            $a->mod(-3);
+        } catch (InvalidArgumentException $negative) {
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $negative);
+        }
+    }
+
+    public function modInverseWithUnitModulus(BigInteger $a): void
+    {
+        try {
+            $result = $a->modInverse(1);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function modInverseWithNonUnitModulus(BigInteger $a): void
+    {
+        try {
+            $a->modInverse(3);
+        } catch (NoInverseException $noInverse) {
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $noInverse);
+        }
+    }
+
     public function modPowWithZeroModulus(BigInteger $a): void
     {
         try {
@@ -145,6 +204,25 @@ final class OperationThrowTypes
             $result = $a->compareTo($b);
         } finally {
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function clampWithOrderedBounds(BigInteger $a): void
+    {
+        try {
+            $result = $a->clamp(min: 1, max: 2);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function clampWithReversedBounds(BigInteger $a): void
+    {
+        try {
+            $a->clamp(max: 1, min: 2);
+        } catch (InvalidArgumentException $invalidBounds) {
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $invalidBounds);
         }
     }
 }

@@ -83,6 +83,15 @@ final class ConversionThrowTypes
         }
     }
 
+    public function toBigDecimalOnBigInteger(BigInteger $a): void
+    {
+        try {
+            $result = $a->toBigDecimal();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
     public function toIntOnBigIntegerCatchingOverflow(BigInteger $a): void
     {
         try {
@@ -103,6 +112,28 @@ final class ConversionThrowTypes
             $result = 0;
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function toIntAfterToScaleZero(BigDecimal $a): void
+    {
+        try {
+            $a->toScale(0, RoundingMode::Down)->toInt();
+        } catch (IntegerOverflowException $overflow) {
+        } catch (RoundingNecessaryException $rounding) {
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $overflow);
+            assertVariableCertainty(TrinaryLogic::createNo(), $rounding);
+        }
+    }
+
+    public function toIntAfterUnrelatedToScale(OtherScaler $scaler): void
+    {
+        try {
+            $scaler->toScale(0, RoundingMode::Down)->toInt();
+        } catch (RoundingNecessaryException $rounding) {
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $rounding);
         }
     }
 }

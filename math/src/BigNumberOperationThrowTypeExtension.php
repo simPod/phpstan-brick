@@ -18,6 +18,7 @@ use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\MethodReflection;
 use PHPStan\Type\Constant\ConstantIntegerType;
 use PHPStan\Type\DynamicMethodThrowTypeExtension;
+use PHPStan\Type\IntegerRangeType;
 use PHPStan\Type\IntegerType;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
@@ -239,12 +240,20 @@ final class BigNumberOperationThrowTypeExtension implements DynamicMethodThrowTy
         // addition when the other operand converts to a scale-zero decimal.
         $operandHasZeroScale = TypeCombinator::union(new IntegerType(), new ObjectType(BigInteger::class))
             ->isSuperTypeOf($argType)->yes();
+        $modulusIsNonNegative = ($methodName === 'mod' || $methodName === 'modInverse')
+            && IntegerRangeType::fromInterval(0, null)->isSuperTypeOf($argType)->yes();
+        $modulusIsOne = $methodName === 'modInverse' && new ConstantIntegerType(1)->isSuperTypeOf($argType)->yes();
+        // Exact division by either unit cannot need rounding; zero is rejected before rounding.
+        $divisionIsExactOrZero = $methodName === 'dividedByExact'
+            && IntegerRangeType::fromInterval(-1, 1)->isSuperTypeOf($argType)->yes();
         $residual = array_values(array_filter(
             $residual,
             static fn (string $e): bool => match ($e) {
                 DivisionByZeroException::class => ! $divisorIsNonZero,
                 IntegerOverflowException::class => ! $operandHasZeroScale,
-                default => true,
+                InvalidArgumentException::class => ! $modulusIsNonNegative,
+                NoInverseException::class => ! $modulusIsOne,
+                RoundingNecessaryException::class => ! $divisionIsExactOrZero,
             },
         ));
 
@@ -262,7 +271,7 @@ final class BigNumberOperationThrowTypeExtension implements DynamicMethodThrowTy
     ): Type|null {
         $args = $methodCall->getArgs();
 
-        if (! isset($args[0], $args[1])) {
+        if (! isset($args[0], $args[1]) || $args[0]->unpack || $args[1]->unpack) {
             return $methodReflection->getThrowType();
         }
 
@@ -278,6 +287,13 @@ final class BigNumberOperationThrowTypeExtension implements DynamicMethodThrowTy
         $maxType = $scope->getType($args[1]->value);
 
         if ($requiredType->isSuperTypeOf($minType)->yes() && $requiredType->isSuperTypeOf($maxType)->yes()) {
+            if (
+                $minType instanceof ConstantIntegerType && $maxType instanceof ConstantIntegerType
+                && $minType->getValue() <= $maxType->getValue()
+            ) {
+                return null;
+            }
+
             return new ObjectType(InvalidArgumentException::class);
         }
 
