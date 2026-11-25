@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Brick\Money\PHPStan;
 
-use Brick\Math\Exception\NumberFormatException;
+use Brick\Math\Exception\RoundingNecessaryException;
 use Brick\Money\AbstractMoney;
+use Brick\Money\Exception\ContextException;
 use Brick\Money\Exception\InvalidArgumentException;
 use Brick\Money\Exception\UnknownCurrencyException;
 use Brick\Money\Money;
+use Brick\Money\RationalMoney;
 use PhpParser\Node\Expr\MethodCall;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\MethodReflection;
@@ -18,33 +20,20 @@ use PHPStan\Type\Type;
 use PHPStan\Type\TypeCombinator;
 
 /**
- * Narrows the throw type of {@see Money::toContext()} and {@see Money::convertedTo()}
- * based on the {@see RoundingMode} parameter.
- *
- * When the rounding mode is known to NOT be `Unnecessary`, {@see RoundingNecessaryException} cannot occur.
+ * Narrows conversion and context changes on {@see Money} and {@see RationalMoney}.
  */
 final class MoneyRoundingModeThrowTypeExtension implements DynamicMethodThrowTypeExtension
 {
-    /**
-     * method name => rounding mode arg index.
-     */
-    private const array METHODS = [
-        'toContext' => 1,
-        'convertedTo' => 3,
-    ];
-
     public function isMethodSupported(MethodReflection $methodReflection): bool
     {
         $methodName = $methodReflection->getName();
         $className = $methodReflection->getDeclaringClass()->getName();
 
-        if (! isset(self::METHODS[$methodName])) {
-            return false;
+        if ($methodName === 'convertedTo') {
+            return $className === Money::class || $className === RationalMoney::class;
         }
 
-        return $className === Money::class
-            || $className === AbstractMoney::class
-            || $methodReflection->getDeclaringClass()->isSubclassOf(AbstractMoney::class);
+        return $methodName === 'toContext' && $className === AbstractMoney::class;
     }
 
     public function getThrowTypeFromMethodCall(
@@ -52,31 +41,46 @@ final class MoneyRoundingModeThrowTypeExtension implements DynamicMethodThrowTyp
         MethodCall $methodCall,
         Scope $scope,
     ): Type|null {
-        $methodName = $methodReflection->getName();
-        $roundingModeArgIndex = self::METHODS[$methodName];
-
         $args = $methodCall->getArgs();
 
-        if (! isset($args[$roundingModeArgIndex])) {
+        if ($args === [] || SafeType::hasUnboundArguments($args)) {
             return $methodReflection->getThrowType();
         }
 
-        $roundingModeType = $scope->getType($args[$roundingModeArgIndex]->value);
+        $convertedTo = $methodReflection->getName() === 'convertedTo';
+        $residual = [];
 
-        if (! SafeType::isSafeRoundingMode($roundingModeType)) {
-            return $methodReflection->getThrowType();
+        if ($convertedTo) {
+            if (! isset($args[1])) {
+                return $methodReflection->getThrowType();
+            }
+
+            $residual = SafeType::numberParsingExceptions($scope->getType($args[1]->value));
+            // The rate must be positive, and a same-currency conversion requires a rate of 1.
+            $residual[] = new ObjectType(InvalidArgumentException::class);
+
+            if (! SafeType::isSafeCurrency($scope->getType($args[0]->value))) {
+                $residual[] = new ObjectType(UnknownCurrencyException::class);
+            }
         }
 
-        // Rounding mode is not Unnecessary — RoundingNecessaryException cannot occur.
-        if ($methodName === 'toContext') {
-            return null;
+        $isRational = new ObjectType(RationalMoney::class)->isSuperTypeOf($scope->getType($methodCall->var))->yes();
+
+        if (! $convertedTo || ! $isRational) {
+            $contextArg = $args[$convertedTo ? 2 : 0] ?? null;
+            $roundingModeArg = $args[$convertedTo ? 3 : 1] ?? null;
+            $contextType = $contextArg === null ? null : $scope->getType($contextArg->value);
+            $roundingModeType = $roundingModeArg === null ? null : $scope->getType($roundingModeArg->value);
+
+            if (! SafeType::isSafeRoundingMode($roundingModeType)) {
+                $residual[] = new ObjectType(RoundingNecessaryException::class);
+            }
+
+            if (! SafeType::isContextApplicable($contextType, $roundingModeType)) {
+                $residual[] = new ObjectType(ContextException::class);
+            }
         }
 
-        // convertedTo: UnknownCurrencyException + NumberFormatException + InvalidArgumentException remain.
-        return TypeCombinator::union(
-            new ObjectType(UnknownCurrencyException::class),
-            new ObjectType(NumberFormatException::class),
-            new ObjectType(InvalidArgumentException::class),
-        );
+        return $residual === [] ? null : TypeCombinator::union(...$residual);
     }
 }

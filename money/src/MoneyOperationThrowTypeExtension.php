@@ -5,34 +5,33 @@ declare(strict_types=1);
 namespace Brick\Money\PHPStan;
 
 use Brick\Math\Exception\DivisionByZeroException;
-use Brick\Math\Exception\NumberFormatException;
 use Brick\Math\Exception\RoundingNecessaryException;
 use Brick\Money\AbstractMoney;
+use Brick\Money\Exception\ContextException;
 use Brick\Money\Exception\ContextMismatchException;
 use Brick\Money\Exception\CurrencyMismatchException;
-use Brick\Money\Exception\InvalidArgumentException;
-use Brick\Money\Exception\UnknownCurrencyException;
+use Brick\Money\Money;
 use Brick\Money\MoneyBag;
 use Brick\Money\RationalMoney;
 use PhpParser\Node\Expr\MethodCall;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\MethodReflection;
 use PHPStan\Type\DynamicMethodThrowTypeExtension;
+use PHPStan\Type\IntegerType;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
 use PHPStan\Type\TypeCombinator;
 
-use function count;
 use function in_array;
 
 /**
  * Narrows the throw type of {@see Money}, {@see RationalMoney}, and {@see MoneyBag} instance methods
  * based on argument types and rounding mode.
  *
- * - When the argument is an {@see AbstractMoney}, {@see NumberFormatException} from parsing cannot occur.
- * - When the argument is a `BigNumber`, `int`, or `numeric-string`, parsing cannot throw and there is no currency check.
+ * - When the argument is an {@see AbstractMoney}, there is no parsing, but a currency check applies.
+ * - When the argument is a number, NumberFormatException can occur only if parsing may fail.
  * - When the rounding mode is known to NOT be `Unnecessary`, {@see RoundingNecessaryException} cannot occur.
- * - {@see RationalMoney} operations do not involve rounding, so narrowing eliminates all throws.
+ * - {@see RationalMoney} operations do not apply a context or round the result.
  */
 final class MoneyOperationThrowTypeExtension implements DynamicMethodThrowTypeExtension
 {
@@ -69,10 +68,6 @@ final class MoneyOperationThrowTypeExtension implements DynamicMethodThrowTypeEx
             return $isAbstractMoney;
         }
 
-        if ($methodName === 'convertedTo') {
-            return $className === RationalMoney::class;
-        }
-
         if ($methodName === 'getMoney') {
             return $className === MoneyBag::class;
         }
@@ -85,190 +80,88 @@ final class MoneyOperationThrowTypeExtension implements DynamicMethodThrowTypeEx
         MethodCall $methodCall,
         Scope $scope,
     ): Type|null {
-        if ($methodCall->getArgs() === []) {
+        $args = $methodCall->getArgs();
+
+        if ($args === [] || SafeType::hasUnboundArguments($args)) {
             return $methodReflection->getThrowType();
         }
 
         $methodName = $methodReflection->getName();
-
-        if ($methodName === 'convertedTo') {
-            return $this->narrowConvertedTo($methodCall, $scope, $methodReflection);
-        }
+        $argType = $scope->getType($args[0]->value);
 
         if ($methodName === 'getMoney') {
-            return $this->narrowGetMoney($methodCall, $scope, $methodReflection);
+            return SafeType::isSafeCurrency($argType) ? null : $methodReflection->getThrowType();
         }
 
         if (in_array($methodName, self::ComparisonMethods, true)) {
-            return $this->narrowComparison($methodCall, $scope, $methodReflection);
+            return $this->narrowComparison($argType);
         }
 
-        return $this->narrowArithmetic($methodName, $methodCall, $scope, $methodReflection);
+        return $this->narrowArithmetic(
+            $methodName,
+            $argType,
+            $scope->getType($methodCall->var),
+            isset($args[1]) ? $scope->getType($args[1]->value) : null,
+        );
     }
 
     /**
      * Narrows comparison methods on {@see AbstractMoney}.
-     *
-     * AbstractMoney arg -> only {@see CurrencyMismatchException}; safe number -> no throw.
      */
-    private function narrowComparison(
-        MethodCall $methodCall,
-        Scope $scope,
-        MethodReflection $methodReflection,
-    ): Type|null {
-        $argType = $scope->getType($methodCall->getArgs()[0]->value);
+    private function narrowComparison(Type $argType): Type|null
+    {
+        $residual = SafeType::numberParsingExceptions($argType, acceptsMoney: true);
 
-        if (new ObjectType(AbstractMoney::class)->isSuperTypeOf($argType)->yes()) {
-            return new ObjectType(CurrencyMismatchException::class);
+        if (! new ObjectType(AbstractMoney::class)->isSuperTypeOf($argType)->no()) {
+            $residual[] = new ObjectType(CurrencyMismatchException::class);
         }
 
-        if (SafeType::isSafeNumber($argType)) {
-            return null;
-        }
-
-        return $methodReflection->getThrowType();
+        return $residual === [] ? null : TypeCombinator::union(...$residual);
     }
 
     /**
      * Narrows arithmetic methods (`plus`, `minus`, `multipliedBy`, `dividedBy`)
      * on {@see Money} and {@see RationalMoney}.
-     *
-     * Considers both argument type (safe number / {@see AbstractMoney}) and rounding mode.
      */
     private function narrowArithmetic(
         string $methodName,
-        MethodCall $methodCall,
-        Scope $scope,
-        MethodReflection $methodReflection,
+        Type $argType,
+        Type $receiverType,
+        Type|null $roundingModeType,
     ): Type|null {
-        $callerType = $scope->getType($methodCall->var);
-        $isRational = new ObjectType(RationalMoney::class)->isSuperTypeOf($callerType)->yes();
+        $acceptsMoney = $methodName === 'plus' || $methodName === 'minus';
+        $mayApplyContext = ! new ObjectType(RationalMoney::class)->isSuperTypeOf($receiverType)->yes();
+        $residual = SafeType::numberParsingExceptions($argType, $acceptsMoney);
 
-        $args = $methodCall->getArgs();
-        $argType = $scope->getType($args[0]->value);
-
-        $argIsSafeNumber = SafeType::isSafeNumber($argType);
-        $argIsAbstractMoney = new ObjectType(AbstractMoney::class)->isSuperTypeOf($argType)->yes();
-        $argIsSafe = $argIsSafeNumber || $argIsAbstractMoney;
-
-        $roundingModeIsSafe = false;
-
-        if (! $isRational && isset($args[1])) {
-            $roundingModeIsSafe = SafeType::isSafeRoundingMode($scope->getType($args[1]->value));
+        if ($acceptsMoney && ! new ObjectType(AbstractMoney::class)->isSuperTypeOf($argType)->no()) {
+            $residual[] = new ObjectType(CurrencyMismatchException::class);
         }
 
-        if (! $argIsSafe && ! $roundingModeIsSafe) {
-            return $methodReflection->getThrowType();
+        if ($acceptsMoney && $mayApplyContext && ! new ObjectType(Money::class)->isSuperTypeOf($argType)->no()) {
+            $residual[] = new ObjectType(ContextMismatchException::class);
         }
 
-        // RationalMoney: no rounding concern. Safe arg -> no throw (except dividedBy zero).
-        if ($isRational) {
-            if ($argIsAbstractMoney) {
-                $residual = [new ObjectType(CurrencyMismatchException::class)];
-
-                if ($methodName === 'dividedBy' && ! SafeType::isNonZero($argType)) {
-                    $residual[] = new ObjectType(DivisionByZeroException::class);
-                }
-
-                return TypeCombinator::union(...$residual);
-            }
-
-            if ($argIsSafeNumber) {
-                if ($methodName === 'dividedBy' && ! SafeType::isNonZero($argType)) {
-                    return new ObjectType(DivisionByZeroException::class);
-                }
-
-                return null;
-            }
-
-            return $methodReflection->getThrowType();
-        }
-
-        // For plus/minus/multipliedBy with int arg, rounding is impossible:
-        // int arithmetic on a Money value always produces an exact result
-        // that fits the same context (any scale, any step).
-        $intArgSuppressesRounding = $methodName !== 'dividedBy' && SafeType::isInteger($argType);
-
-        // Money: build residual throw types.
-        $residualTypes = [];
-
-        // CurrencyMismatchException / ContextMismatchException when arg is AbstractMoney.
-        if ($argIsAbstractMoney) {
-            $residualTypes[] = new ObjectType(CurrencyMismatchException::class);
-            $residualTypes[] = new ObjectType(ContextMismatchException::class);
-        }
-
-        // NumberFormatException when arg is not safe (parsing risk).
-        if (! $argIsSafe) {
-            $residualTypes[] = new ObjectType(NumberFormatException::class);
-        }
-
-        // RoundingNecessaryException when rounding mode is not safe and int arg doesn't suppress it.
-        if (! $roundingModeIsSafe && ! $intArgSuppressesRounding) {
-            $residualTypes[] = new ObjectType(RoundingNecessaryException::class);
-        }
-
-        // DivisionByZeroException when divisor could be zero.
         if ($methodName === 'dividedBy' && ! SafeType::isNonZero($argType)) {
-            $residualTypes[] = new ObjectType(DivisionByZeroException::class);
+            $residual[] = new ObjectType(DivisionByZeroException::class);
         }
 
-        if ($residualTypes === []) {
-            return null;
+        if ($mayApplyContext) {
+            // The receiver's existing cash context and currency are compatible. AutoContext may
+            // still reject the operation if the mode is anything other than Unnecessary.
+            if (! SafeType::isUnnecessaryRoundingMode($roundingModeType)) {
+                $residual[] = new ObjectType(ContextException::class);
+            }
+
+            // Adding an integer can break a cash step (e.g. a step of 10 whole units).
+            // Multiplying by an integer or adding/subtracting zero preserves any step.
+            $hasExactResult = $acceptsMoney && SafeType::isZero($argType)
+                || $methodName === 'multipliedBy' && new IntegerType()->isSuperTypeOf($argType)->yes();
+
+            if (! $hasExactResult && ! SafeType::isSafeRoundingMode($roundingModeType)) {
+                $residual[] = new ObjectType(RoundingNecessaryException::class);
+            }
         }
 
-        return TypeCombinator::union(...$residualTypes);
-    }
-
-    /**
-     * Narrows {@see MoneyBag::getMoney()} — safe currency eliminates {@see UnknownCurrencyException}.
-     */
-    private function narrowGetMoney(
-        MethodCall $methodCall,
-        Scope $scope,
-        MethodReflection $methodReflection,
-    ): Type|null {
-        $currencyType = $scope->getType($methodCall->getArgs()[0]->value);
-
-        if (SafeType::isSafeCurrency($currencyType)) {
-            return null;
-        }
-
-        return $methodReflection->getThrowType();
-    }
-
-    /**
-     * Narrows {@see RationalMoney::convertedTo()} based on currency and exchange rate argument types.
-     */
-    private function narrowConvertedTo(
-        MethodCall $methodCall,
-        Scope $scope,
-        MethodReflection $methodReflection,
-    ): Type|null {
-        $args = $methodCall->getArgs();
-
-        if (count($args) < 2) {
-            return $methodReflection->getThrowType();
-        }
-
-        $currencyIsSafe = SafeType::isSafeCurrency($scope->getType($args[0]->value));
-        $rateIsSafe = SafeType::isSafeNumber($scope->getType($args[1]->value));
-
-        if (! $currencyIsSafe && ! $rateIsSafe) {
-            return $methodReflection->getThrowType();
-        }
-
-        // InvalidArgumentException is always possible (negative/zero exchange rate).
-        $residualTypes = [new ObjectType(InvalidArgumentException::class)];
-
-        if (! $currencyIsSafe) {
-            $residualTypes[] = new ObjectType(UnknownCurrencyException::class);
-        }
-
-        if (! $rateIsSafe) {
-            $residualTypes[] = new ObjectType(NumberFormatException::class);
-        }
-
-        return TypeCombinator::union(...$residualTypes);
+        return $residual === [] ? null : TypeCombinator::union(...$residual);
     }
 }

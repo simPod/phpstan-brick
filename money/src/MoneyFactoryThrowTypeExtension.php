@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace Brick\Money\PHPStan;
 
-use Brick\Math\Exception\NumberFormatException;
 use Brick\Math\Exception\RoundingNecessaryException;
-use Brick\Math\RoundingMode;
 use Brick\Money\Context\AutoContext;
 use Brick\Money\Context\CustomContext;
 use Brick\Money\Context\DefaultContext;
@@ -22,7 +20,6 @@ use PhpParser\Node\Scalar\Int_;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\MethodReflection;
 use PHPStan\Type\DynamicStaticMethodThrowTypeExtension;
-use PHPStan\Type\Enum\EnumCaseObjectType;
 use PHPStan\Type\IntegerType;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
@@ -35,7 +32,7 @@ use function in_array;
  * Narrows the throw type of {@see Money::of()}, {@see Money::ofMinor()}, {@see Money::zero()},
  * {@see RationalMoney::of()}, and {@see RationalMoney::zero()}.
  *
- * - When the amount is a `BigNumber`, `int`, or `numeric-string`, {@see NumberFormatException} from parsing cannot occur.
+ * - When the amount is safe to parse, NumberFormatException cannot occur.
  * - When the currency is a {@see Currency} instance or a known ISO currency code, {@see UnknownCurrencyException} cannot occur.
  * - For `Money::of()`/`ofMinor()`, {@see RoundingNecessaryException} may still occur depending on the rounding mode.
  * - Money factories can throw {@see ContextException} when their context does not apply.
@@ -64,6 +61,10 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
         $args = $methodCall->getArgs();
         $methodName = $methodReflection->getName();
 
+        if (SafeType::hasUnboundArguments($args)) {
+            return $methodReflection->getThrowType();
+        }
+
         if ($methodName === 'zero') {
             return $this->narrowZero($methodCall, $scope, $methodReflection);
         }
@@ -76,29 +77,21 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
         $amountType = $scope->getType($args[0]->value);
         $currencyType = $scope->getType($args[1]->value);
 
-        $amountIsSafe = SafeType::isSafeNumber($amountType);
-        $currencyIsSafe = SafeType::isSafeCurrency($currencyType);
+        $residualTypes = SafeType::numberParsingExceptions($amountType);
 
-        if (! $amountIsSafe && ! $currencyIsSafe) {
-            return $methodReflection->getThrowType();
-        }
-
-        $residualTypes = [];
-
-        if (! $amountIsSafe) {
-            $residualTypes[] = new ObjectType(NumberFormatException::class);
-        }
-
-        if (! $currencyIsSafe) {
+        if (! SafeType::isSafeCurrency($currencyType)) {
             $residualTypes[] = new ObjectType(UnknownCurrencyException::class);
         }
 
         if ($className === Money::class) {
-            if (! $this->isRoundingSafe($amountType, $methodName, $args, $scope)) {
+            $contextType = isset($args[2]) ? $scope->getType($args[2]->value) : null;
+            $roundingModeType = isset($args[3]) ? $scope->getType($args[3]->value) : null;
+
+            if (! $this->isRoundingSafe($amountType, $methodName, $args, $roundingModeType)) {
                 $residualTypes[] = new ObjectType(RoundingNecessaryException::class);
             }
 
-            if (! $this->isContextApplicable($args[2] ?? null, $args[3] ?? null, $scope)) {
+            if (! SafeType::isContextApplicable($contextType, $roundingModeType)) {
                 $residualTypes[] = new ObjectType(ContextException::class);
             }
         }
@@ -108,26 +101,6 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
         }
 
         return TypeCombinator::union(...$residualTypes);
-    }
-
-    private function isContextApplicable(Arg|null $context, Arg|null $roundingMode, Scope $scope): bool
-    {
-        if ($context === null) {
-            return true;
-        }
-
-        $safeContexts = [new ObjectType(DefaultContext::class), new ObjectType(CustomContext::class)];
-        $unnecessary = new EnumCaseObjectType(RoundingMode::class, 'Unnecessary');
-
-        // AutoContext accepts only Unnecessary, including the factory's default rounding mode.
-        if (
-            $roundingMode === null
-            || $unnecessary->isSuperTypeOf($scope->getType($roundingMode->value))->yes()
-        ) {
-            $safeContexts[] = new ObjectType(AutoContext::class);
-        }
-
-        return TypeCombinator::union(...$safeContexts)->isSuperTypeOf($scope->getType($context->value))->yes();
     }
 
     /**
@@ -141,9 +114,13 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
      *
      * @param Arg[] $args
      */
-    private function isRoundingSafe(Type $amountType, string $methodName, array $args, Scope $scope): bool
-    {
-        if (isset($args[3]) && SafeType::isSafeRoundingMode($scope->getType($args[3]->value))) {
+    private function isRoundingSafe(
+        Type $amountType,
+        string $methodName,
+        array $args,
+        Type|null $roundingModeType,
+    ): bool {
+        if (SafeType::isSafeRoundingMode($roundingModeType)) {
             return true;
         }
 
@@ -246,7 +223,7 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
 
         if (
             $methodReflection->getDeclaringClass()->getName() === Money::class
-            && ! $this->isContextApplicable($args[1] ?? null, null, $scope)
+            && ! SafeType::isContextApplicable(isset($args[1]) ? $scope->getType($args[1]->value) : null, null)
         ) {
             $residualTypes[] = new ObjectType(ContextException::class);
         }
