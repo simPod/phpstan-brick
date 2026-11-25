@@ -6,9 +6,11 @@ namespace Brick\Money\PHPStan;
 
 use Brick\Math\Exception\NumberFormatException;
 use Brick\Math\Exception\RoundingNecessaryException;
+use Brick\Math\RoundingMode;
 use Brick\Money\Context\AutoContext;
 use Brick\Money\Context\CustomContext;
 use Brick\Money\Context\DefaultContext;
+use Brick\Money\Exception\ContextException;
 use Brick\Money\Exception\UnknownCurrencyException;
 use Brick\Money\Money;
 use Brick\Money\RationalMoney;
@@ -20,6 +22,7 @@ use PhpParser\Node\Scalar\Int_;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\MethodReflection;
 use PHPStan\Type\DynamicStaticMethodThrowTypeExtension;
+use PHPStan\Type\Enum\EnumCaseObjectType;
 use PHPStan\Type\IntegerType;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
@@ -35,6 +38,7 @@ use function in_array;
  * - When the amount is a `BigNumber`, `int`, or `numeric-string`, {@see NumberFormatException} from parsing cannot occur.
  * - When the currency is a {@see Currency} instance or a known ISO currency code, {@see UnknownCurrencyException} cannot occur.
  * - For `Money::of()`/`ofMinor()`, {@see RoundingNecessaryException} may still occur depending on the rounding mode.
+ * - Money factories can throw {@see ContextException} when their context does not apply.
  */
 final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTypeExtension
 {
@@ -60,7 +64,6 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
         $args = $methodCall->getArgs();
         $methodName = $methodReflection->getName();
 
-        // zero() only has a currency parameter.
         if ($methodName === 'zero') {
             return $this->narrowZero($methodCall, $scope, $methodReflection);
         }
@@ -90,10 +93,14 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
             $residualTypes[] = new ObjectType(UnknownCurrencyException::class);
         }
 
-        // Money::of()/ofMinor() can still throw RoundingNecessaryException,
-        // unless the amount cannot require rounding.
-        if ($className === Money::class && ! $this->isRoundingSafe($amountType, $methodName, $args, $scope)) {
-            $residualTypes[] = new ObjectType(RoundingNecessaryException::class);
+        if ($className === Money::class) {
+            if (! $this->isRoundingSafe($amountType, $methodName, $args, $scope)) {
+                $residualTypes[] = new ObjectType(RoundingNecessaryException::class);
+            }
+
+            if (! $this->isContextApplicable($args[2] ?? null, $args[3] ?? null, $scope)) {
+                $residualTypes[] = new ObjectType(ContextException::class);
+            }
         }
 
         if ($residualTypes === []) {
@@ -101,6 +108,26 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
         }
 
         return TypeCombinator::union(...$residualTypes);
+    }
+
+    private function isContextApplicable(Arg|null $context, Arg|null $roundingMode, Scope $scope): bool
+    {
+        if ($context === null) {
+            return true;
+        }
+
+        $safeContexts = [new ObjectType(DefaultContext::class), new ObjectType(CustomContext::class)];
+        $unnecessary = new EnumCaseObjectType(RoundingMode::class, 'Unnecessary');
+
+        // AutoContext accepts only Unnecessary, including the factory's default rounding mode.
+        if (
+            $roundingMode === null
+            || $unnecessary->isSuperTypeOf($scope->getType($roundingMode->value))->yes()
+        ) {
+            $safeContexts[] = new ObjectType(AutoContext::class);
+        }
+
+        return TypeCombinator::union(...$safeContexts)->isSuperTypeOf($scope->getType($context->value))->yes();
     }
 
     /**
@@ -210,10 +237,19 @@ final class MoneyFactoryThrowTypeExtension implements DynamicStaticMethodThrowTy
 
         $currencyType = $scope->getType($args[0]->value);
 
-        if (SafeType::isSafeCurrency($currencyType)) {
-            return null;
+        $residualTypes = [];
+
+        if (! SafeType::isSafeCurrency($currencyType)) {
+            $residualTypes[] = new ObjectType(UnknownCurrencyException::class);
         }
 
-        return new ObjectType(UnknownCurrencyException::class);
+        if (
+            $methodReflection->getDeclaringClass()->getName() === Money::class
+            && ! $this->isContextApplicable($args[1] ?? null, null, $scope)
+        ) {
+            $residualTypes[] = new ObjectType(ContextException::class);
+        }
+
+        return $residualTypes === [] ? null : TypeCombinator::union(...$residualTypes);
     }
 }
