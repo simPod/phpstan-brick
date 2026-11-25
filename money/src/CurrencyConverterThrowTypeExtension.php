@@ -53,14 +53,14 @@ final class CurrencyConverterThrowTypeExtension implements DynamicMethodThrowTyp
         }
 
         if ($methodName === 'convert') {
-            $contextType = isset($args[3]) ? $scope->getType($args[3]->value) : null;
+            $context = ($args[3] ?? null)?->value;
             $roundingModeType = isset($args[4]) ? $scope->getType($args[4]->value) : null;
 
             if (! SafeType::isSafeRoundingMode($roundingModeType)) {
                 $residualTypes[] = new ObjectType(RoundingNecessaryException::class);
             }
 
-            if (! SafeType::isContextApplicable($contextType, $roundingModeType)) {
+            if (! SafeType::isContextApplicable($context, $roundingModeType, $scope)) {
                 $residualTypes[] = new ObjectType(ContextException::class);
             }
         }

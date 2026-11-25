@@ -9,10 +9,14 @@ use Brick\Math\Exception\NumberFormatException;
 use Brick\Math\RoundingMode;
 use Brick\Money\AbstractMoney;
 use Brick\Money\Context\AutoContext;
+use Brick\Money\Context\CashContext;
 use Brick\Money\Context\CustomContext;
 use Brick\Money\Context\DefaultContext;
 use Brick\Money\Currency;
 use PhpParser\Node\Arg;
+use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\New_;
+use PHPStan\Analyser\Scope;
 use PHPStan\Type\Constant\ConstantIntegerType;
 use PHPStan\Type\Enum\EnumCaseObjectType;
 use PHPStan\Type\IntegerType;
@@ -23,8 +27,17 @@ use PHPStan\Type\UnionType;
 use ReflectionClass;
 
 use function assert;
+use function count;
 use function dirname;
+use function filter_var;
+use function ltrim;
 use function preg_match;
+use function rtrim;
+use function str_starts_with;
+use function strlen;
+
+use const FILTER_VALIDATE_INT;
+use const PHP_INT_MAX;
 
 /**
  * Checks which parts of a declared throw type are possible for the given arguments.
@@ -53,7 +66,7 @@ final class SafeType
 
     /**
      * `numeric-string` is broader than Brick's grammar (e.g. whitespace and oversized exponents).
-     * Only plain integer/decimal literals are known safe without evaluating the input.
+     * Check decimal literals without expanding exponents.
      *
      * @return list<Type>
      */
@@ -74,7 +87,7 @@ final class SafeType
 
             $value = self::constantString($variant);
 
-            if ($value === null || preg_match('~\A[+-]?(?:[0-9]++(?:\.[0-9]*+)?|\.[0-9]++)\z~', $value) !== 1) {
+            if ($value === null || self::parseDecimalLiteral($value) === null) {
                 return [new ObjectType(NumberFormatException::class)];
             }
         }
@@ -129,9 +142,9 @@ final class SafeType
 
     /**
      * Checks a target context that need not have been applied to this currency before.
-     * CashContext is not generally safe: its step may be incompatible with the currency's scale.
+     * CashContext with a step of 1 applies to any currency. Other steps may be incompatible with the currency's scale.
      */
-    public static function isContextApplicable(Type|null $context, Type|null $roundingMode): bool
+    public static function isContextApplicable(Expr|null $context, Type|null $roundingMode, Scope $scope): bool
     {
         if ($context === null) {
             return true;
@@ -143,7 +156,27 @@ final class SafeType
             $safeContexts[] = new ObjectType(AutoContext::class);
         }
 
-        return TypeCombinator::union(...$safeContexts)->isSuperTypeOf($context)->yes();
+        $contextType = $scope->getType($context);
+
+        return TypeCombinator::union(...$safeContexts)->isSuperTypeOf($contextType)->yes()
+            || self::isUnitCashContext($context, $scope);
+    }
+
+    public static function isUnitCashContext(Expr $context, Scope $scope): bool
+    {
+        if (
+            ! $context instanceof New_
+            || ! new ObjectType(CashContext::class)->isSuperTypeOf($scope->getType($context))->yes()
+        ) {
+            return false;
+        }
+
+        $args = $context->getArgs();
+
+        return count($args) === 1
+            && ! $args[0]->unpack
+            && ($args[0]->name === null || $args[0]->name->toString() === 'step')
+            && new ConstantIntegerType(1)->isSuperTypeOf($scope->getType($args[0]->value))->yes();
     }
 
     /**
@@ -154,6 +187,32 @@ final class SafeType
     public static function isZero(Type $type): bool
     {
         return new ConstantIntegerType(0)->isSuperTypeOf($type)->yes();
+    }
+
+    public static function isOne(Type $type): bool
+    {
+        $one = new ConstantIntegerType(1);
+
+        foreach ($type instanceof UnionType ? $type->getTypes() : [$type] as $variant) {
+            if ($one->isSuperTypeOf($variant)->yes()) {
+                continue;
+            }
+
+            $value = self::constantString($variant);
+            $decimal = $value === null ? null : self::parseDecimalLiteral($value);
+
+            if ($decimal === null) {
+                return false;
+            }
+
+            [$digits, $scale] = $decimal;
+
+            if ($scale !== strlen($digits) - 1 || rtrim($digits, '0') !== '1') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -179,6 +238,45 @@ final class SafeType
 
         // getConstantStrings() alone does not prove the type excludes other values.
         return $constant !== null && $constant->isSuperTypeOf($type)->yes() ? $constant->getValue() : null;
+    }
+
+    /**
+     * Returns the signed digits and scale without padding the digits or converting the mantissa to a native number.
+     *
+     * @return array{string, int}|null
+     */
+    private static function parseDecimalLiteral(string $value): array|null
+    {
+        $matched = preg_match(
+            '~\A(?<sign>[+-]?)(?=[0-9]|\.[0-9])(?<integral>[0-9]*+)'
+            . '(?:\.(?<fractional>[0-9]*+))?(?:[eE](?<exponent>[+-]?[0-9]++))?\z~',
+            $value,
+            $parts,
+        );
+
+        if ($matched !== 1) {
+            return null;
+        }
+
+        $fractional = $parts['fractional'] ?? '';
+        $rawExponent = $parts['exponent'] ?? '';
+        $exponentDigits = ltrim($rawExponent, '+-0');
+        $exponentSign = str_starts_with($rawExponent, '-') ? '-' : '';
+        $exponent = $exponentDigits === '' ? 0 : filter_var($exponentSign . $exponentDigits, FILTER_VALIDATE_INT);
+
+        // Brick Math requires both the scale and the expanded digit count (at least scale + 1) to fit in an int.
+        if ($exponent === false || $exponent <= strlen($fractional) - PHP_INT_MAX) {
+            return null;
+        }
+
+        $scale = strlen($fractional) - $exponent;
+        $digits = ltrim($parts['integral'] . $fractional, '0');
+
+        if ($scale < 0 && strlen($digits) > PHP_INT_MAX + $scale) {
+            return null;
+        }
+
+        return [$parts['sign'] === '-' ? '-' . $digits : $digits, $scale];
     }
 
     /** @return array<string, true> */

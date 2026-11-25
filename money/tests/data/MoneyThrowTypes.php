@@ -41,10 +41,10 @@ class MoneyThrowTypes
         }
     }
 
-    public function ofIntWithCurrencyInstance(Currency $currency): void
+    public function ofIntWithNamedUnnecessaryRounding(Currency $currency): void
     {
         try {
-            $result = Money::of(100, $currency);
+            $result = Money::of(100, $currency, roundingMode: RoundingMode::Unnecessary);
         } finally {
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
         }
@@ -114,10 +114,8 @@ class MoneyThrowTypes
 
     public function zeroWithIncompatibleCashContext(): void
     {
-        $context = new CashContext(3);
-
         try {
-            $result = Money::zero('USD', $context);
+            $result = Money::zero('USD', new CashContext(3));
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
@@ -152,10 +150,19 @@ class MoneyThrowTypes
         }
     }
 
-    public function ofMinorIntWithCurrencyInstance(Currency $currency): void
+    public function ofMinorIntWithTypedDefaultContext(Currency $currency, DefaultContext $context): void
     {
         try {
-            $result = Money::ofMinor(500, $currency);
+            $result = Money::ofMinor(500, $currency, context: $context, roundingMode: RoundingMode::Unnecessary);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofMinorWithUnitCashContext(): void
+    {
+        try {
+            $result = Money::ofMinor(1, 'USD', new CashContext(step: 1));
         } finally {
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
         }
@@ -395,10 +402,30 @@ class MoneyThrowTypes
         }
     }
 
+    public function compareToWithExponent(Money $a): void
+    {
+        try {
+            $result = $a->compareTo('1e2');
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
     public function compareToWithOversizedExponent(Money $a): void
     {
         try {
             $a->compareTo('1e99999999999999999999999');
+        } catch (NumberFormatException) {
+            $caught = true;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $caught);
+        }
+    }
+
+    public function compareToWithOversizedExpansion(Money $a): void
+    {
+        try {
+            $a->compareTo('1e' . PHP_INT_MAX);
         } catch (NumberFormatException) {
             $caught = true;
         } finally {
@@ -691,12 +718,11 @@ class MoneyThrowTypes
         }
     }
 
-    public function toContextWithIncompatibleCashContext(Money $a): void
+    /** @param positive-int $step */
+    public function toContextWithUnprovenCashStep(Money $a, int $step): void
     {
-        $context = new CashContext(3);
-
         try {
-            $a->toContext($context, RoundingMode::Down);
+            $a->toContext(new CashContext($step), RoundingMode::Down);
         } catch (ContextException) {
             $caught = true;
         } finally {
@@ -721,6 +747,15 @@ class MoneyThrowTypes
             $result = $a->toContext($a->getContext(), RoundingMode::Unnecessary);
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
+        }
+    }
+
+    public function convertedToWithUnitRateAndSafeRounding(Money $a, Currency $currency): void
+    {
+        try {
+            $result = $a->convertedTo($currency, '+010e-1', roundingMode: RoundingMode::Down);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
         }
     }
 
@@ -952,10 +987,19 @@ class MoneyThrowTypes
 
     // --- RationalMoney::convertedTo ---
 
-    public function rationalConvertedToWithSafeArgs(RationalMoney $a, Currency $currency): void
+    public function rationalConvertedToWithUnitRate(RationalMoney $a, Currency $currency): void
     {
         try {
-            $result = $a->convertedTo($currency, 2);
+            $result = $a->convertedTo($currency, 1);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function rationalConvertedToWithNonUnitRate(RationalMoney $a, Currency $currency): void
+    {
+        try {
+            $result = $a->convertedTo($currency, '1.00000000000000001');
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $result);
         }
