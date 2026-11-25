@@ -47,7 +47,7 @@ final class RoundingModeThrowTypeExtension implements DynamicMethodThrowTypeExte
         }
 
         return ($className === BigInteger::class || $className === BigDecimal::class)
-            && ($methodName === 'dividedBy' || $methodName === 'sqrt');
+            && ($methodName === 'dividedBy' || $methodName === 'sqrt' || $methodName === 'nthRoot');
     }
 
     public function getThrowTypeFromMethodCall(
@@ -68,12 +68,22 @@ final class RoundingModeThrowTypeExtension implements DynamicMethodThrowTypeExte
             $argTypes[] = $scope->getType($arg->value);
         }
 
+        $className = $methodReflection->getDeclaringClass()->getName();
         $methodName = $methodReflection->getName();
         if ($methodName === 'toScale') {
-            return self::narrowToScale($argTypes[0] ?? null, $argTypes[1] ?? null);
+            return self::narrowToScale($className === BigInteger::class, $argTypes[0] ?? null, $argTypes[1] ?? null);
         }
 
-        $isDecimal = $methodReflection->getDeclaringClass()->getName() === BigDecimal::class;
+        $isDecimal = $className === BigDecimal::class;
+        if ($methodName === 'nthRoot') {
+            return self::narrowNthRoot(
+                $isDecimal,
+                $argTypes[0] ?? null,
+                $isDecimal ? ($argTypes[1] ?? null) : null,
+                $argTypes[$isDecimal ? 2 : 1] ?? null,
+            );
+        }
+
         $scaleType = $isDecimal ? ($argTypes[$methodName === 'sqrt' ? 0 : 1] ?? null) : null;
 
         // Decimal division and square root validate the scale before doing any work.
@@ -99,19 +109,20 @@ final class RoundingModeThrowTypeExtension implements DynamicMethodThrowTypeExte
     }
 
     /**
-     * toScale() has two independent narrowing axes:
-     * - scale is non-negative → removes {@see InvalidArgumentException}
-     * - rounding mode is not Unnecessary → removes {@see RoundingNecessaryException}
+     * Scaling a BigInteger never discards digits; other numbers may require rounding.
      */
-    private static function narrowToScale(Type|null $scaleType, Type|null $roundingModeType): Type|null
-    {
+    private static function narrowToScale(
+        bool $isInteger,
+        Type|null $scaleType,
+        Type|null $roundingModeType,
+    ): Type|null {
         $residual = [];
 
         if (! self::isNonNegativeScale($scaleType)) {
             $residual[] = new ObjectType(InvalidArgumentException::class);
         }
 
-        if (! self::permitsRounding($roundingModeType)) {
+        if (! $isInteger && ! self::permitsRounding($roundingModeType)) {
             $residual[] = new ObjectType(RoundingNecessaryException::class);
         }
 
@@ -136,6 +147,44 @@ final class RoundingModeThrowTypeExtension implements DynamicMethodThrowTypeExte
         }
 
         return TypeCombinator::union(...$residual);
+    }
+
+    private static function narrowNthRoot(
+        bool $isDecimal,
+        Type|null $degreeType,
+        Type|null $scaleType,
+        Type|null $roundingModeType,
+    ): Type|null {
+        if (
+            ($degreeType !== null && IntegerRangeType::fromInterval(null, 0)->isSuperTypeOf($degreeType)->yes())
+            || ($scaleType !== null && IntegerRangeType::fromInterval(null, -1)->isSuperTypeOf($scaleType)->yes())
+        ) {
+            return new ObjectType(InvalidArgumentException::class);
+        }
+
+        $residual = [];
+        if (
+            $degreeType === null || ! IntegerRangeType::fromInterval(1, null)->isSuperTypeOf($degreeType)->yes()
+            || ($isDecimal && ! self::isNonNegativeScale($scaleType))
+        ) {
+            $residual[] = new ObjectType(InvalidArgumentException::class);
+        }
+
+        $degree = $degreeType instanceof ConstantIntegerType ? $degreeType->getValue() : null;
+        if ($degree === null || $degree % 2 === 0) {
+            $residual[] = new ObjectType(NegativeNumberException::class);
+        }
+
+        // A decimal root of degree one simply rescales the input; other degrees use checked scale arithmetic.
+        if ($isDecimal && $degree !== 1) {
+            $residual[] = new ObjectType(IntegerOverflowException::class);
+        }
+
+        if (($isDecimal || $degree !== 1) && ! self::permitsRounding($roundingModeType)) {
+            $residual[] = new ObjectType(RoundingNecessaryException::class);
+        }
+
+        return $residual === [] ? null : TypeCombinator::union(...$residual);
     }
 
     private static function narrowDivision(

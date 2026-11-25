@@ -10,6 +10,8 @@ use Brick\Math\BigNumber;
 use Brick\Math\BigRational;
 use Brick\Math\Exception\DivisionByZeroException;
 use Brick\Math\Exception\IntegerOverflowException;
+use Brick\Math\Exception\InvalidArgumentException;
+use Brick\Math\Exception\RandomSourceException;
 use Brick\Math\Exception\RoundingNecessaryException;
 use PHPStan\TrinaryLogic;
 
@@ -114,6 +116,47 @@ final class FactoryThrowTypes
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $zero);
             assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofFractionWithUnpackedArguments(): void
+    {
+        try {
+            $result = BigRational::ofFraction(...[0, 2]);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function ofFractionWithUnpackedZeroDenominator(): void
+    {
+        try {
+            BigRational::ofFraction(...[2, 0]);
+        } catch (DivisionByZeroException $zero) {
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $zero);
+        }
+    }
+
+    public function randomRangeWithOrderedBounds(): void
+    {
+        try {
+            $result = BigInteger::randomRange(0, 1);
+        } catch (RandomSourceException $randomSource) {
+            $result = BigInteger::zero();
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $randomSource);
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function randomRangeWithReversedBounds(): void
+    {
+        try {
+            BigInteger::randomRange(1, 0);
+        } catch (InvalidArgumentException $invalidBounds) {
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $invalidBounds);
         }
     }
 

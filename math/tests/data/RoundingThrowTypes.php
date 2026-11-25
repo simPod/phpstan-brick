@@ -20,6 +20,15 @@ use const PHP_INT_MAX;
 
 final class RoundingThrowTypes
 {
+    public function integerToScaleZero(BigInteger $a): void
+    {
+        try {
+            $result = $a->toScale(0);
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
     /** @param int<0, max> $scale */
     public function toScaleWithSafeArgs(BigDecimal $a, int $scale): void
     {
@@ -171,6 +180,74 @@ final class RoundingThrowTypes
     {
         try {
             $a->sqrt(roundingMode: RoundingMode::Down, scale: $scale);
+        } catch (InvalidArgumentException $invalidScale) {
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $invalidScale);
+        }
+    }
+
+    public function integerNthRootWithRounding(BigInteger $a): void
+    {
+        try {
+            $result = $a->nthRoot(4, RoundingMode::Down);
+        } catch (NegativeNumberException $negativeNumber) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $negativeNumber);
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function integerNthRootWithoutRounding(BigInteger $a): void
+    {
+        try {
+            $result = $a->nthRoot(3);
+        } catch (RoundingNecessaryException $rounding) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $rounding);
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function integerNthRootWithMaybeInvalidDegree(BigInteger $a, int $degree): void
+    {
+        try {
+            $a->nthRoot($degree, RoundingMode::Down);
+        } catch (InvalidArgumentException $invalidDegree) {
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $invalidDegree);
+        }
+    }
+
+    public function decimalNthRootWithRoundingAndMaximumScale(BigDecimal $a): void
+    {
+        try {
+            $result = $a->nthRoot(roundingMode: RoundingMode::Down, scale: PHP_INT_MAX, n: 3);
+        } catch (IntegerOverflowException $overflow) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $overflow);
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function decimalNthRootOfDegreeOneWithoutRounding(BigDecimal $a): void
+    {
+        try {
+            $result = $a->nthRoot(1, 0);
+        } catch (RoundingNecessaryException $rounding) {
+            $result = $a;
+        } finally {
+            assertVariableCertainty(TrinaryLogic::createMaybe(), $rounding);
+            assertVariableCertainty(TrinaryLogic::createYes(), $result);
+        }
+    }
+
+    public function decimalNthRootWithMaybeNegativeScale(BigDecimal $a, int $scale): void
+    {
+        try {
+            $a->nthRoot(3, $scale, RoundingMode::Down);
         } catch (InvalidArgumentException $invalidScale) {
         } finally {
             assertVariableCertainty(TrinaryLogic::createMaybe(), $invalidScale);

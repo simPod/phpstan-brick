@@ -26,6 +26,7 @@ use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
 use PHPStan\Type\TypeCombinator;
 
+use function array_push;
 use function count;
 use function in_array;
 
@@ -191,25 +192,44 @@ final class BigNumberOfThrowTypeExtension implements DynamicStaticMethodThrowTyp
         Scope $scope,
         MethodReflection $methodReflection,
     ): Type|null {
-        if (count($methodCall->getArgs()) < 2) {
+        $argTypes = [];
+        foreach ($methodCall->getArgs() as $arg) {
+            $type = $scope->getType($arg->value);
+            if (! $arg->unpack) {
+                $argTypes[] = $type;
+
+                continue;
+            }
+
+            // The parameter positions must be known, including the denominator's.
+            $arrays = $type->getConstantArrays();
+            if (count($arrays) !== 1 || ! $arrays[0]->isSuperTypeOf($type)->yes()) {
+                return $methodReflection->getThrowType();
+            }
+
+            $array = $arrays[0];
+            if (! $array->isList()->yes() || $array->getOptionalKeys() !== []) {
+                return $methodReflection->getThrowType();
+            }
+
+            array_push($argTypes, ...$array->getValueTypes());
+        }
+
+        if (count($argTypes) !== 2) {
             return $methodReflection->getThrowType();
         }
 
         // int|BigInteger args cannot cause parsing exceptions in BigInteger::of().
         $safeType = TypeCombinator::union(new IntegerType(), new ObjectType(BigInteger::class));
 
-        foreach ($methodCall->getArgs() as $arg) {
-            $argType = $scope->getType($arg->value);
-
+        foreach ($argTypes as $argType) {
             if (! $safeType->isSuperTypeOf($argType)->yes()) {
                 return $methodReflection->getThrowType();
             }
         }
 
         // DivisionByZeroException is impossible when the denominator is guaranteed non-zero.
-        $denominatorType = $scope->getType($methodCall->getArgs()[1]->value);
-
-        if (self::isNonZero($denominatorType)) {
+        if (self::isNonZero($argTypes[1])) {
             return null;
         }
 
@@ -221,26 +241,27 @@ final class BigNumberOfThrowTypeExtension implements DynamicStaticMethodThrowTyp
         Scope $scope,
         MethodReflection $methodReflection,
     ): Type|null {
-        if (count($methodCall->getArgs()) < 2) {
+        $args = $methodCall->getArgs();
+        if (! isset($args[0], $args[1]) || $args[0]->unpack || $args[1]->unpack) {
             return $methodReflection->getThrowType();
         }
 
-        $bigIntegerType = new ObjectType(BigInteger::class);
-
-        // Only check first two args ($min, $max) — third is the callable.
-        for ($i = 0; $i < 2; $i++) {
-            $argType = $scope->getType($methodCall->getArgs()[$i]->value);
-
-            if (! $bigIntegerType->isSuperTypeOf($argType)->yes()) {
-                return $methodReflection->getThrowType();
-            }
+        $minType = $scope->getType($args[0]->value);
+        $maxType = $scope->getType($args[1]->value);
+        $safeType = TypeCombinator::union(new IntegerType(), new ObjectType(BigInteger::class));
+        if (! $safeType->isSuperTypeOf($minType)->yes() || ! $safeType->isSuperTypeOf($maxType)->yes()) {
+            return $methodReflection->getThrowType();
         }
 
-        // Both args are BigInteger — only InvalidArgumentException + RandomSourceException remain.
-        return TypeCombinator::union(
-            new ObjectType(InvalidArgumentException::class),
-            new ObjectType(RandomSourceException::class),
-        );
+        $randomError = new ObjectType(RandomSourceException::class);
+        if (
+            $minType instanceof ConstantIntegerType && $maxType instanceof ConstantIntegerType
+            && $minType->getValue() <= $maxType->getValue()
+        ) {
+            return $randomError;
+        }
+
+        return TypeCombinator::union(new ObjectType(InvalidArgumentException::class), $randomError);
     }
 
     /**
