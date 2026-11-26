@@ -1,0 +1,9 @@
+/* export-ignore
+/.github -export-ignore
+/.github/** -export-ignore
+/.gitignore -export-ignore
+/math -export-ignore
+/money -export-ignore
+/LICENSE -export-ignore
+/README.md -export-ignore
+/renovate.json -export-ignore
